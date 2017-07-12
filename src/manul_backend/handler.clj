@@ -19,16 +19,24 @@
 
 (defentity view_songs_per_date)
 
+(defn format-day
+  "Takes 0 to -, takes 10 to a"
+  [n]
+  (if (= 0 n) "-" (Integer/toString n 16)))
+
 (defn format-row
   "Takes [2 0 0 0 2 10 3] to 2---2a3)"
   [row]
-  (->> row
-   (map
-    (fn [n] (if (= 0 n) "-" (Integer/toString n 16))))
-   (s/join)))
- 
-  
+  (let [n (apply + row)]
+   (->> row
+        (map format-day)
+        ((fn [x] (concat (vec x) [" " (bar n) " " (if (pos? n) n)])))
+        (s/join))))
 
+(defn bar
+  [n]
+  (s/join (repeat n "•")))
+  
 (defn songs
   "Dump it out"
   [& args]
@@ -41,7 +49,6 @@
         (map format-row)
         (into ["<pre>MTWTFSS"])
         (s/join "<br />"))))
-        
 
 (defroutes app-routes
   (GET "/" [] songs)
