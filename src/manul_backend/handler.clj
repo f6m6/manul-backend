@@ -24,6 +24,10 @@
   [n]
   (if (= 0 n) "-" (Integer/toString n 16)))
 
+(defn bar
+  [n]
+  (s/join (repeat n "•")))
+
 (defn format-row
   "Takes [2 0 0 0 2 10 3] to 2---2a3)"
   [row]
@@ -32,10 +36,6 @@
         (map format-day)
         ((fn [x] (concat (vec x) [" " (bar n) " " (if (pos? n) n)])))
         (s/join))))
-
-(defn bar
-  [n]
-  (s/join (repeat n "•")))
   
 (defn songs
   "Dump it out"
