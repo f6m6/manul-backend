@@ -20,7 +20,7 @@
 (defentity view_songs_per_date)
 
 (defn format-row
-  "Takes [2 0 0 0 2 2 3] to 2---223)"
+  "Takes [2 0 0 0 2 10 3] to 2---2a3)"
   [row]
   (->> row
    (map
