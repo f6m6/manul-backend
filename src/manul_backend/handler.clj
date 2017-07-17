@@ -18,6 +18,7 @@
                :password (System/getenv "GIGS_PASSWORD")})
 
 (defentity view_songs_per_date)
+(defentity next_song)
 
 (defn format-day
   "Takes 0 to -, takes 10 to a"
@@ -36,7 +37,20 @@
         (map format-day)
         ((fn [x] (concat (vec x) [" " (bar n) " " (if (pos? n) n)])))
         (s/join))))
-  
+
+(defn next-active-songs-html
+  "Dump it out"
+  [& args]
+  (let [rows (select next_song)]
+   (->> rows
+        (map
+         (fn
+           [row]
+           (let [{:keys [song_id count last_played ]} row]
+            (str (format "%-20s" song_id) (format "%-9s" count) last_played " ago\n"))))
+        (into ["<pre>A c t i v e    S o n g s\n\nNAME                PLAYS    LAST PLAYED\n"])
+        (apply str))))
+
 (defn songs
   "Dump it out"
   [& args]
@@ -48,10 +62,23 @@
         (map vec)
         (map format-row)
         (into ["<pre>MTWTFSS"])
-        (s/join "<br />"))))
+        (s/join "<br />")
+        (str (doall (next-active-songs-html))))))
+
+(defn songs-per-date-edn
+  "Dump it out"
+  [& args]
+  (select view_songs_per_date))
+
+(defn next-active-songs-edn
+  "Dump it out"
+  [& args]
+  (select next_song))
 
 (defroutes app-routes
   (GET "/" [] songs)
+  (GET "/plays" [] songs-per-date-edn)
+  (GET "/next-active-songs" [] next-active-songs-edn)
   (route/not-found "Not Found"))
 
 (def app
