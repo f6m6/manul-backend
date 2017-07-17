@@ -65,9 +65,20 @@
         (s/join "<br />")
         (str (doall (next-active-songs-html))))))
 
+(defn songs-per-date-edn
+  "Dump it out"
+  [& args]
+  (select view_songs_per_date))
+
+(defn next-active-songs-edn
+  "Dump it out"
+  [& args]
+  (select next_song))
 
 (defroutes app-routes
   (GET "/" [] songs)
+  (GET "/plays" [] songs-per-date-edn)
+  (GET "/next-active-songs" [] next-active-songs-edn)
   (route/not-found "Not Found"))
 
 (def app
