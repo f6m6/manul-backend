@@ -58,7 +58,7 @@
    (->> rows
         (map (comp :count))
         (into (vec (repeat 6 0)))
-        (partition 7)
+        (partition 7 7 [0 0 0 0 0 0 0])
         (map vec)
         (map format-row)
         (into ["<pre>MTWTFSS"])
