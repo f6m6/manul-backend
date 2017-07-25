@@ -6,7 +6,8 @@
                  [compojure "1.5.1"]
                  [ring/ring-defaults "0.2.1"]
                  [korma "0.4.0"]
-                 [org.postgresql/postgresql "9.2-1002-jdbc4"]]
+                 [org.postgresql/postgresql "9.2-1002-jdbc4"]
+                 [ring-cors "0.1.11"]]
   :plugins [[lein-ring "0.9.7"]]
   :ring {:handler manul-backend.handler/app}
   :profiles

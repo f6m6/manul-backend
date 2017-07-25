@@ -2,7 +2,9 @@
   (:require [compojure.core :refer :all]
             [compojure.route :as route]
             [ring.middleware.defaults :refer [wrap-defaults site-defaults]]
-            [clojure.string :as s]))
+            [clojure.string :as s]
+            [ring.middleware.cors :refer [wrap-cors]]))
+
 (use 'korma.db)
 (use 'korma.core)
 
@@ -19,6 +21,7 @@
 
 (defentity view_songs_per_date)
 (defentity next_song)
+(defentity venues)
 
 (defn format-day
   "Takes 0 to -, takes 10 to a"
@@ -79,7 +82,14 @@
   (GET "/" [] songs)
   (GET "/plays" [] songs-per-date-edn)
   (GET "/next-active-songs" [] next-active-songs-edn)
+  (GET "/venues" [] (select venues))
   (route/not-found "Not Found"))
 
 (def app
-  (wrap-defaults app-routes site-defaults))
+  (wrap-cors
+   (wrap-defaults app-routes site-defaults)
+   :access-control-allow-origin [#"http://localhost:3449"
+                                 #"http://manul-frontend.herokuapp.com"]
+   :access-control-allow-methods [:get :put :post :delete]
+   :access-control-allow-credentials "true"))
+ 
