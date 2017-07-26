@@ -76,7 +76,7 @@
 (defn next-active-songs-edn
   "Dump it out"
   [& args]
-  (select next_song))
+  (str (vec (select next_song (fields :song_id :count)))))
 
 (defroutes app-routes
   (GET "/" [] songs)
