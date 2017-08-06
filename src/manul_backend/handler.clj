@@ -54,20 +54,26 @@
         (into ["<pre>A c t i v e    S o n g s\n\nNAME                PLAYS    LAST PLAYED\n"])
         (apply str))))
 
-(defn songs
+(defn visualiser
   "Dump it out"
   [& args]
   (let [rows (select view_songs_per_date (fields :count))]
-   (->> rows
-        (map (comp :count))
-        (into (vec (repeat 6 0)))
-        (partition 7 7 [0 0 0 0 0 0 0])
-        (map vec)
-        (map format-row)
-        (into ["<pre>MTWTFSS"])
-        (s/join "<br />")
-        (str (doall (next-active-songs-html))))))
+    (->> rows
+         (map (comp :count))
+         (into (vec (repeat 6 0)))
+         (partition 7 7 [0 0 0 0 0 0 0])
+         (map vec)
+         (map format-row)
+         (into ["<pre>MTWTFSS"])
+         (s/join "<br />"))))
 
+(defn root
+  "Dump it out"
+  [& args]
+  (str
+   (doall (next-active-songs-html))
+   (visualiser)))
+   
 (defn songs-per-date-edn
   "Dump it out"
   [& args]
@@ -84,7 +90,8 @@
   (str (vec (select venues (fields :venuename :postcode)))))
 
 (defroutes app-routes
-  (GET "/" [] songs)
+  (GET "/" [] root)
+  (GET "/visualiser" [] visualiser)
   (GET "/plays" [] songs-per-date-edn)
   (GET "/next-active-songs" [] next-active-songs-edn)
   (GET "/venues" [] (venues-edn))
