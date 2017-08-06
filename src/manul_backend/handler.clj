@@ -78,11 +78,16 @@
   [& args]
   (str (vec (select next_song (fields :song_id :count)))))
 
+(defn venues-edn
+  "Dump it out"
+  [& args]
+  (str (vec (select venues (fields :venuename :postcode)))))
+
 (defroutes app-routes
   (GET "/" [] songs)
   (GET "/plays" [] songs-per-date-edn)
   (GET "/next-active-songs" [] next-active-songs-edn)
-  (GET "/venues" [] (select venues))
+  (GET "/venues" [] (venues-edn))
   (route/not-found "Not Found"))
 
 (def app
