@@ -100,7 +100,7 @@
 
 (def app
   (wrap-cors
-   (wrap-defaults app-routes site-defaults)
+   (wrap-defaults app-routes  (assoc-in site-defaults [:security :anti-forgery] false))
    :access-control-allow-origin [#"http://localhost:3449"
                                  #"http://manul-frontend.herokuapp.com"]
    :access-control-allow-methods [:get :put :post :delete]
