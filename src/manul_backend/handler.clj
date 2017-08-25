@@ -92,6 +92,7 @@
 (defroutes app-routes
   (GET "/" [] root)
   (POST "/test" [x] (str "gor " x " garbutt"))
+  (POST "/test" [x] (str "gor " x " garbutt") (prn x))
   (GET "/visualiser" [] visualiser)
   (GET "/plays" [] songs-per-date-edn)
   (GET "/next-active-songs" [] next-active-songs-edn)
