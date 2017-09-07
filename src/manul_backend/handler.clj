@@ -3,21 +3,31 @@
             [compojure.route :as route]
             [ring.middleware.defaults :refer [wrap-defaults site-defaults]]
             [clojure.string :as s]
-            [ring.middleware.cors :refer [wrap-cors]]))
+            [ring.middleware.cors :refer [wrap-cors]]
+            [ring.middleware.params :refer [wrap-params]]))
 
 (use 'korma.db)
 (use 'korma.core)
 
-(defdb heroku {:classname "org.postgresql.Driver"
+;; (defdb heroku {:classname "org.postgresql.Driver"
+;;                :subprotocol "postgresql"
+;;                :subname (str
+;;                          "//"
+;;                          (System/getenv "GIGS_HOST")
+;;                          "/"
+;;                          (System/getenv "GIGS_DATABASE")
+;;                          "?sslmode=require")
+;;                :user (System/getenv "GIGS_USER")
+;;                :password (System/getenv "GIGS_PASSWORD")})
+
+(defdb local {:classname "org.postgresql.Driver"
                :subprotocol "postgresql"
                :subname (str
                          "//"
-                         (System/getenv "GIGS_HOST")
+                         "localhost:5432"
                          "/"
-                         (System/getenv "GIGS_DATABASE")
-                         "?sslmode=require")
-               :user (System/getenv "GIGS_USER")
-               :password (System/getenv "GIGS_PASSWORD")})
+                         "manul")
+               :user "farhan"})
 
 (defentity view_songs_per_date)
 (defentity next_song)
@@ -51,7 +61,7 @@
          (fn
            [row]
            (let [{:keys [song_id count last_played ]} row]
-            (str (format "%-20s" song_id) (format "%-9s" count) last_played " ago\n"))))
+            (str (format "%-20s" song_id) (format "%-9s" count) (str last_played " ago\n")))))
         (into ["<pre>A c t i v e    S o n g s\n\nNAME                PLAYS    LAST PLAYED\n"])
         (apply str))))
 
@@ -97,7 +107,6 @@
 
 (defroutes app-routes
   (GET "/" [] root)
-  (POST "/test" [x] (str "gor " x " garbutt"))
   (POST "/test" [x] (str "gor " x " garbutt") (prn x))
   (GET "/visualiser" [] visualiser)
   (GET "/plays" [] songs-per-date-edn)
@@ -108,7 +117,8 @@
 
 (def app
   (wrap-cors
-   (wrap-defaults app-routes  (assoc-in site-defaults [:security :anti-forgery] false))
+   (wrap-params
+    (wrap-defaults app-routes  (assoc-in site-defaults [:security :anti-forgery] false)))
    :access-control-allow-origin [#"http://localhost:3449"
                                  #"http://manul-frontend.herokuapp.com"]
    :access-control-allow-methods [:get :put :post :delete]
