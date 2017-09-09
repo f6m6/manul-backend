@@ -23,6 +23,7 @@
 (defentity next_song)
 (defentity venues)
 (defentity song_performance_dates)
+(defentity performances)
 
 (defn format-day
   "Takes 0 to -, takes 10 to a"
@@ -74,7 +75,11 @@
   (str
    (doall (next-active-songs-html))
    (visualiser)))
-   
+
+(defn select-all
+  [entity]
+  (str (vec (select entity))))
+                    
 (defn songs-per-date-edn
   "Dump it out"
   [& args]
@@ -101,6 +106,7 @@
   (POST "/test" [x] (str "gor " x " garbutt") (prn x))
   (GET "/visualiser" [] visualiser)
   (GET "/plays" [] songs-per-date-edn)
+  (GET "/performances" [] (select-all performances))
   (GET "/song-performance-dates" [] song-performance-dates-edn)
   (GET "/next-active-songs" [] next-active-songs-edn)
   (GET "/venues" [] (venues-edn))
