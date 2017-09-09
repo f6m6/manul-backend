@@ -78,7 +78,7 @@
 (defn songs-per-date-edn
   "Dump it out"
   [& args]
-  (select view_songs_per_date))
+  (str (vec (select view_songs_per_date))))
 
 (defn song-performance-dates-edn
   "Dump it out"
