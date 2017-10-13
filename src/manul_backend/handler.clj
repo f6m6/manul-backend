@@ -20,6 +20,7 @@
                :password (System/getenv "GIGS_PASSWORD")})
 
 (defentity view_songs_per_date)
+(defentity view_song_plays)
 (defentity next_song)
 (defentity venues)
 (defentity song_performance_dates)
@@ -95,6 +96,11 @@
   [& args]
   (str (vec (select next_song (fields :song_id :count)))))
 
+(defn view-song-plays-edn
+  "Dump it out"
+  [& args]
+  (str (vec (select view_song_plays (fields :song_id :count)))))
+
 (defn venues-edn
   "Dump it out"
   [& args]
@@ -109,6 +115,7 @@
   (GET "/performances" [] (select-all performances))
   (GET "/song-performance-dates" [] song-performance-dates-edn)
   (GET "/next-active-songs" [] next-active-songs-edn)
+  (GET "/view-song-plays" [] view-song-plays-edn)
   (GET "/venues" [] (venues-edn))
   (route/not-found "Not Found"))
 
