@@ -107,7 +107,7 @@
 
 (defroutes app-routes
   (GET "/" [] root)
-  (POST "/test" [x] (str "gor " x " garbutt") (prn x))
+  (POST "/performance" x (str (:form-params x)))
   (GET "/visualiser" [] visualiser)
   (GET "/plays" [] songs-per-date-edn)
   (GET "/song-performance-dates" [] song-performance-dates-edn)
