@@ -111,6 +111,15 @@
   [& args]
   (str (vec (select view_song_plays (fields :song_id :count)))))
 
+(defn view-song-plays-frequencies
+  "Returns a vector [ [plays, frequency] ... ] for  frequencies"
+  [& args]
+  (->> (select view_song_plays (fields :count))
+       (map :count)
+       frequencies
+       vec
+       str))
+
 (defn venues-edn
   "Dump it out"
   [& args]
@@ -125,6 +134,7 @@
   (GET "/song-performance-dates" [] song-performance-dates-edn)
   (GET "/next-active-songs" [] next-active-songs-edn)
   (GET "/view-song-plays" [] view-song-plays-edn)
+  (GET "/view-song-plays-frequencies" [] view-song-plays-frequencies)
   (GET "/venues" [] (venues-edn))
   (route/not-found "Not Found"))
 
