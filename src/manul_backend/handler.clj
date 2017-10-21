@@ -30,9 +30,11 @@
                :user "farhan"})
 
 (defentity view_songs_per_date)
+(defentity view_song_plays)
 (defentity next_song)
 (defentity venues)
 (defentity song_performance_dates)
+(defentity performances)
 
 (defn format-day
   "Takes 0 to -, takes 10 to a"
@@ -84,11 +86,15 @@
   (str
    (doall (next-active-songs-html))
    (visualiser)))
-   
+
+(defn select-all
+  [entity]
+  (str (vec (select entity))))
+                    
 (defn songs-per-date-edn
   "Dump it out"
   [& args]
-  (select view_songs_per_date))
+  (str (vec (select view_songs_per_date))))
 
 (defn song-performance-dates-edn
   "Dump it out"
@@ -100,6 +106,11 @@
   [& args]
   (str (vec (select next_song (fields :song_id :count)))))
 
+(defn view-song-plays-edn
+  "Dump it out"
+  [& args]
+  (str (vec (select view_song_plays (fields :song_id :count)))))
+
 (defn venues-edn
   "Dump it out"
   [& args]
@@ -110,8 +121,10 @@
   (POST "/performance" x (str (:form-params x)))
   (GET "/visualiser" [] visualiser)
   (GET "/plays" [] songs-per-date-edn)
+  (GET "/performances" [] (select-all performances))
   (GET "/song-performance-dates" [] song-performance-dates-edn)
   (GET "/next-active-songs" [] next-active-songs-edn)
+  (GET "/view-song-plays" [] view-song-plays-edn)
   (GET "/venues" [] (venues-edn))
   (route/not-found "Not Found"))
 
