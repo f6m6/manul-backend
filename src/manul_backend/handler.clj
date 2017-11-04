@@ -1,4 +1,5 @@
 (ns manul-backend.handler
+  (:import (java.util UUID))
   (:require [compojure.core :refer :all]
             [compojure.route :as route]
             [ring.middleware.defaults :refer [wrap-defaults site-defaults]]
@@ -129,13 +130,14 @@
 (defn create-event
   "Creates an event from form parameters"
   [params]
+  (prn params)
   (insert events
-   (values params)))
+   (values (assoc params :id (UUID/randomUUID)))))
 
 (defroutes app-routes
   (GET "/" [] root)
   (POST "/performance" x (str (:form-params x)))
-  (POST "/event" request (create-event (:form-params request)))
+  (POST "/event" request (create-event (:params request)))
   (GET "/visualiser" [] visualiser)
   (GET "/plays" [] songs-per-date-edn)
   (GET "/performances" [] (select-all performances))
