@@ -9,7 +9,9 @@
                  [org.postgresql/postgresql "9.2-1002-jdbc4"]
                  [ring-cors "0.1.11"]]
   :plugins [[lein-ring "0.9.7"]]
-  :ring {:handler manul-backend.handler/app}
+  :ring {:handler manul-backend.handler/app
+         :auto-reload? true
+         :auto-refresh? true}
   :profiles
   {:dev {:dependencies [[javax.servlet/servlet-api "2.5"]
                         [ring/ring-mock "0.3.0"]]}})
