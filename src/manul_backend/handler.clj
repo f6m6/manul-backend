@@ -35,6 +35,7 @@
 (defentity venues)
 (defentity song_performance_dates)
 (defentity performances)
+(defentity events)
 
 (defn format-day
   "Takes 0 to -, takes 10 to a"
@@ -125,9 +126,16 @@
   [& args]
   (str (vec (select venues (fields :venuename :postcode)))))
 
+(defn create-event
+  "Creates an event from form parameters"
+  [params]
+  (insert events
+   (values params)))
+
 (defroutes app-routes
   (GET "/" [] root)
   (POST "/performance" x (str (:form-params x)))
+  (POST "/event" request (create-event (:form-params request)))
   (GET "/visualiser" [] visualiser)
   (GET "/plays" [] songs-per-date-edn)
   (GET "/performances" [] (select-all performances))
