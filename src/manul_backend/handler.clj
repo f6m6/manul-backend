@@ -93,25 +93,10 @@
   [entity]
   (str (vec (select entity))))
                     
-(defn songs-per-date-edn
-  "Dump it out"
-  [& args]
-  (str (vec (select view_songs_per_date))))
-
-(defn song-performance-dates-edn
-  "Dump it out"
-  [& args]
-  (str (vec (select song_performance_dates))))
-
-(defn next-active-songs-edn
-  "Dump it out"
-  [& args]
-  (str (vec (select next_song (fields :song_id :count)))))
-
-(defn view-song-plays-edn
-  "Dump it out"
-  [& args]
-  (str (vec (select view_song_plays (fields :song_id :count)))))
+(defn songs-per-date-edn (select-all view_songs_per_date))
+(defn song-performance-dates-edn (select-all song_performance_dates))
+(defn next-active-songs-edn (select-all next_song (fields :song_id :count)))
+(defn view-song-plays-edn (select-all view_song_plays (fields :song_id :count)))))
 
 (defn view-song-plays-frequencies
   "Returns a vector [ [plays, frequency] ... ] for  frequencies"
