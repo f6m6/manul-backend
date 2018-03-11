@@ -55,6 +55,7 @@
        last
        :performancedate
        str
+       (assoc {} :lastGigDate)
        json/write-str))
 
 (defroutes app-routes
