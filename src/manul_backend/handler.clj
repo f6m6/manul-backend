@@ -51,9 +51,9 @@
   "Return a JSON { lastGigDate } with date of last gig"
   []
   (->> (select performances)
-       (sort-by :performancedate)
+       (map :performancedate)
+       sort
        last
-       :performancedate
        str
        (assoc {} :lastGigDate)
        json/write-str))
