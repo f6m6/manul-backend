@@ -3,6 +3,8 @@
             [compojure.route :as route]
             [ring.middleware.defaults :refer [wrap-defaults site-defaults]]
             [clojure.string :as s]
+            [clojure.data.json :as json]
+            [clj-time.core :as time]
             [ring.middleware.cors :refer [wrap-cors]]))
 
 (use 'korma.db)
@@ -12,127 +14,60 @@
                :subprotocol "postgresql"
                :subname (str
                          "//"
-                         (System/getenv "GIGS_HOST")
+                         "localhost"
                          "/"
-                         (System/getenv "GIGS_DATABASE")
-                         "?sslmode=require")
-               :user (System/getenv "GIGS_USER")
-               :password (System/getenv "GIGS_PASSWORD")})
-
-(defentity view_songs_per_date)
-(defentity view_song_plays)
-(defentity next_song)
+                         "manul08032018")})
+                         
 (defentity venues)
-(defentity song_performance_dates)
+(defentity song_performances)
 (defentity performances)
-
-(defn format-day
-  "Takes 0 to -, takes 10 to a"
-  [n]
-  (if (= 0 n) "-" (Integer/toString n 16)))
-
-(defn bar
-  [n]
-  (s/join (repeat n "•")))
-
-(defn format-row
-  "Takes [2 0 0 0 2 10 3] to 2---2a3)"
-  [row]
-  (let [n (apply + row)]
-   (->> row
-        (map format-day)
-        ((fn [x] (concat (vec x) [" " (bar n) " " (if (pos? n) n)])))
-        (s/join))))
-
-(defn next-active-songs-html
-  "Dump it out"
-  [& args]
-  (let [rows (select next_song)]
-   (->> rows
-        (map
-         (fn
-           [row]
-           (let [{:keys [song_id count last_played ]} row]
-            (str (format "%-20s" song_id) (format "%-9s" count) last_played " ago\n"))))
-        (into ["<pre>A c t i v e    S o n g s\n\nNAME                PLAYS    LAST PLAYED\n"])
-        (apply str))))
-
-(defn visualiser
-  "Dump it out"
-  [& args]
-  (let [rows (select view_songs_per_date (fields :count))]
-    (->> rows
-         (map (comp :count))
-         (into (vec (repeat 6 0)))
-         (partition 7 7 [0 0 0 0 0 0 0])
-         (map vec)
-         (map format-row)
-         (into ["<pre>MTWTFSS"])
-         (s/join "<br />"))))
-
-(defn root
-  "Dump it out"
-  [& args]
-  (str
-   (doall (next-active-songs-html))
-   (visualiser)))
+(defentity view_event_counts_per_date)
+(defentity view_next_songs_to_play)
 
 (defn select-all
+  "A generic function to SELECT ALL of an entity a.k.a. relation in the database"
   [entity]
-  (str (vec (select entity))))
-                    
-(defn songs-per-date-edn
-  "Dump it out"
-  [& args]
-  (str (vec (select view_songs_per_date))))
+  (vec (select entity)))
 
-(defn song-performance-dates-edn
-  "Dump it out"
-  [& args]
-  (str (vec (select song_performance_dates))))
-
-(defn next-active-songs-edn
-  "Dump it out"
-  [& args]
-  (str (vec (select next_song (fields :song_id :count)))))
-
-(defn view-song-plays-edn
-  "Dump it out"
-  [& args]
-  (str (vec (select view_song_plays (fields :song_id :count)))))
-
-(defn view-song-plays-frequencies
-  "Returns a vector [ [plays, frequency] ... ] for  frequencies"
-  [& args]
-  (->> (select view_song_plays (fields :count))
-       (map :count)
+(defn song-performances-counts-per-date
+  "Return a JSON array of number of songs played per date [{ date: '2016-01-01', count: 6 }]"
+  []
+  (->> (select view_event_counts_per_date)
+       (map (fn [row] (str (:performancedate row))))
        frequencies
-       vec
-       str))
+       (sort-by first)
+       (map (fn [pair] {:date (first pair) :count (second pair)}))
+       json/write-str))
 
-(defn venues-edn
-  "Dump it out"
-  [& args]
-  (str (vec (select venues (fields :venuename :postcode)))))
+(defn next-songs-to-play
+  "Return a JSON array with songs, play count and time since last play"
+  []
+  (->> (select view_next_songs_to_play)
+       (map (fn [row] (clojure.core/update row :last_played str)))
+       vec
+       json/write-str))
+
+(defn last-gig-date
+  "Return a JSON { lastGigDate } with date of last gig"
+  []
+  (->> (select performances)
+       (sort-by :performancedate)
+       last
+       :performancedate
+       str
+       json/write-str))
 
 (defroutes app-routes
-  (GET "/" [] root)
-  (POST "/test" [x] (str "gor " x " garbutt"))
-  (POST "/test" [x] (str "gor " x " garbutt") (prn x))
-  (GET "/visualiser" [] visualiser)
-  (GET "/plays" [] songs-per-date-edn)
-  (GET "/performances" [] (select-all performances))
-  (GET "/song-performance-dates" [] song-performance-dates-edn)
-  (GET "/next-active-songs" [] next-active-songs-edn)
-  (GET "/view-song-plays" [] view-song-plays-edn)
-  (GET "/view-song-plays-frequencies" [] view-song-plays-frequencies)
-  (GET "/venues" [] (venues-edn))
+  (GET "/song-performances-counts-per-date" [] (song-performances-counts-per-date))
+  (GET "/next-songs-to-play" [] (next-songs-to-play))
+  (GET "/last-gig-date" [] (last-gig-date))
   (route/not-found "Not Found"))
 
 (def app
   (wrap-cors
    (wrap-defaults app-routes  (assoc-in site-defaults [:security :anti-forgery] false))
    :access-control-allow-origin [#"http://localhost:3449"
+                                 #"http://localhost:3000"
                                  #"http://manul-frontend.herokuapp.com"]
    :access-control-allow-methods [:get :put :post :delete]
    :access-control-allow-credentials "true"))
