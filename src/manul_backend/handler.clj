@@ -5,6 +5,7 @@
             [clojure.string :as s]
             [clojure.data.json :as json]
             [clj-time.core :as time]
+            [clj-time.format :as f]
             [ring.middleware.cors :refer [wrap-cors]]))
 
 (use 'korma.db)
@@ -57,6 +58,18 @@
        str
        (assoc {} :lastGigDate)
        json/write-str))
+
+(defn stringify
+  [date]
+  (first (s/split (str date) #"\.")))
+
+(defn to-array [session] (vals (select-keys session [:start :end])))
+
+(defn parse [postgres-date] (f/parse (f/formatters :mysql) (stringify postgres-date)))
+
+(defn diff-dates [dates] (time/interval (first dates) (last dates)))
+
+(defn minutes [session] (time/in-minutes (diff-dates (map parse (to-array session)))))
 
 (defroutes app-routes
   (GET "/song-performances-counts-per-date" [] (song-performances-counts-per-date))
