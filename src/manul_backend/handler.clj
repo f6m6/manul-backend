@@ -22,23 +22,14 @@
 (defentity venues)
 (defentity song_performances)
 (defentity performances)
-(defentity view_event_counts_per_date)
+(defentity sessions)
+(defentity view_song_lengths_by_date)
 (defentity view_next_songs_to_play)
 
 (defn select-all
   "A generic function to SELECT ALL of an entity a.k.a. relation in the database"
   [entity]
   (vec (select entity)))
-
-(defn song-performances-counts-per-date
-  "Return a JSON array of number of songs played per date [{ date: '2016-01-01', count: 6 }]"
-  []
-  (->> (select view_event_counts_per_date)
-       (map (fn [row] (str (:performancedate row))))
-       frequencies
-       (sort-by first)
-       (map (fn [pair] {:date (first pair) :count (second pair)}))
-       json/write-str))
 
 (defn next-songs-to-play
   "Return a JSON array with songs, play count and time since last play"
@@ -63,18 +54,42 @@
   [date]
   (first (s/split (str date) #"\.")))
 
+;; Getting seq of { :date, :count = minutes } maps out of sessions
 (defn to-array [session] (vals (select-keys session [:start :end])))
-
 (defn parse [postgres-date] (f/parse (f/formatters :mysql) (stringify postgres-date)))
-
 (defn diff-dates [dates] (time/interval (first dates) (last dates)))
+(defn seconds [session] (time/in-seconds (diff-dates (map parse (to-array session)))))
+(defn date [session] (f/unparse (f/formatters :date) (parse (:start session))))
+(defn date-and-seconds [session] { :date (date session), :seconds (seconds session)})
+(defn sessions-as-date-and-seconds [] (map date-and-seconds (select sessions)))
 
-(defn minutes [session] (time/in-minutes (diff-dates (map parse (to-array session)))))
+;; Getting seq of { :date, :count } maps out of performances
+(defn seconds-song-perf [{ :keys [length]}]  (apply + [(.getSeconds length) (* (.getMinutes length) 60) (* (.getHours length) 3600)]))
+(defn date-and-seconds-song-perf [sp] { :date (str (:performancedate sp)), :seconds (seconds-song-perf sp)})
+(defn song-perfs-as-date-and-seconds [] (map date-and-seconds-song-perf (select view_song_lengths_by_date)))
+
+(defn dates-and-seconds-sessions-and-perfs [] (concat (sessions-as-date-and-seconds) (song-perfs-as-date-and-seconds)))
+
+(defn add-seconds [out {:keys [date seconds]}] (update out date + seconds))  
+
+(defn merge-d2s-with-das [d2s row1] (clojure.core/update d2s (:date row1) (fn [x y] (+ (if (some? x) x 0) y)) (:seconds row1)))
+(defn to-d2s [dass] (reduce merge-d2s-with-das {} dass))
+(defn to-date-and-counts [d2s] (map (fn [[date seconds]] {:date date :count seconds}) d2s))
+(defn all-dates-and-counts-json [] (json/write-str (vec (to-date-and-counts (to-d2s (song-perfs-as-date-and-seconds))))))
+;; TODO - that thing above can be switched back to dates-and-second-sessions... the thing iwth all on line 71
+;; make more endpoints for the others
+;; the DB view this relies on is wrong :(
+
+(defn test [] (all-dates-and-counts-json))
+
+(defn date-three-months-ago [] (time/minus (time/today) (time/months 3)))
+
+;; (defn test [] (str (date-three-months-ago)))
 
 (defroutes app-routes
-  (GET "/song-performances-counts-per-date" [] (song-performances-counts-per-date))
   (GET "/next-songs-to-play" [] (next-songs-to-play))
   (GET "/last-gig-date" [] (last-gig-date))
+  (GET "/test" [] (test))
   (route/not-found "Not Found"))
 
 (def app
@@ -82,6 +97,7 @@
    (wrap-defaults app-routes  (assoc-in site-defaults [:security :anti-forgery] false))
    :access-control-allow-origin [#"http://localhost:3449"
                                  #"http://localhost:3000"
+                                 #"http://192.168.0.6:3000"
                                  #"http://manul-frontend.herokuapp.com"]
    :access-control-allow-methods [:get :put :post :delete]
    :access-control-allow-credentials "true"))
