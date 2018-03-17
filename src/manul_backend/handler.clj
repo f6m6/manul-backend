@@ -77,7 +77,8 @@
 (defn to-date-and-seconds [d2s] (map (fn [[date seconds]] {:date date :seconds seconds}) d2s))
 (defn all-dates-and-seconds [] (vec (to-date-and-seconds (to-d2s (dates-and-seconds-sessions-and-perfs)))))
 (defn max-seconds [] (:seconds (apply max-key :seconds (all-dates-and-seconds))))
-(defn all-dates-and-seconds-normalised [] (sort-by :date (map (fn [{:keys [date seconds]}] {:date date :count (Math/round (* 4 (/ seconds (max-seconds))) ) }) (all-dates-and-seconds))))
+(defn to-count [seconds] (Math/ceil (* 4 (/ seconds (max-seconds)))))
+(defn all-dates-and-seconds-normalised [] (sort-by :date (map (fn [{:keys [date seconds]}] {:date date :count (to-count seconds) }) (all-dates-and-seconds))))
 
 ;; TODO - that thing above can be switched back to dates-and-second-sessions... the thing iwth all on line 71
 ;; make more endpoints for the others
