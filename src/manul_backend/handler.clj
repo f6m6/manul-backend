@@ -74,13 +74,14 @@
 
 (defn merge-d2s-with-das [d2s row1] (clojure.core/update d2s (:date row1) (fn [x y] (+ (if (some? x) x 0) y)) (:seconds row1)))
 (defn to-d2s [dass] (reduce merge-d2s-with-das {} dass))
-(defn to-date-and-counts [d2s] (map (fn [[date seconds]] {:date date :count seconds}) d2s))
-(defn all-dates-and-counts-json [] (json/write-str (vec (to-date-and-counts (to-d2s (song-perfs-as-date-and-seconds))))))
+(defn to-date-and-seconds [d2s] (map (fn [[date seconds]] {:date date :seconds seconds}) d2s))
+(defn all-dates-and-seconds [] (vec (to-date-and-seconds (to-d2s (dates-and-seconds-sessions-and-perfs)))))
+(defn max-seconds [] (:seconds (apply max-key :seconds (all-dates-and-seconds))))
+(defn all-dates-and-seconds-normalised [] (sort-by :date (map (fn [{:keys [date seconds]}] {:date date :count (Math/round (* 4 (/ seconds (max-seconds))) ) }) (all-dates-and-seconds))))
+
 ;; TODO - that thing above can be switched back to dates-and-second-sessions... the thing iwth all on line 71
 ;; make more endpoints for the others
 ;; the DB view this relies on is wrong :(
-
-(defn test [] (all-dates-and-counts-json))
 
 (defn date-three-months-ago [] (time/minus (time/today) (time/months 3)))
 
@@ -89,7 +90,7 @@
 (defroutes app-routes
   (GET "/next-songs-to-play" [] (next-songs-to-play))
   (GET "/last-gig-date" [] (last-gig-date))
-  (GET "/test" [] (test))
+  (GET "/normalised-count-per-day" [] (json/write-str (all-dates-and-seconds-normalised)))
   (route/not-found "Not Found"))
 
 (def app
