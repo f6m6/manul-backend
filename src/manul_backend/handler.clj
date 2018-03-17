@@ -25,6 +25,7 @@
 (defentity sessions)
 (defentity view_song_lengths_by_date)
 (defentity view_next_songs_to_play)
+(defentity session_types)
 
 (defn select-all
   "A generic function to SELECT ALL of an entity a.k.a. relation in the database"
@@ -92,6 +93,7 @@
   (GET "/next-songs-to-play" [] (next-songs-to-play))
   (GET "/last-gig-date" [] (last-gig-date))
   (GET "/normalised-count-per-day" [] (json/write-str (all-dates-and-seconds-normalised)))
+  (GET "/session-types" [] (json/write-str (vec (map (fn [row] { :id (str (:id row)) :name (:name row) })  (select session_types)))))
   (route/not-found "Not Found"))
 
 (def app
