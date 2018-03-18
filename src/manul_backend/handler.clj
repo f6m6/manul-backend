@@ -17,7 +17,10 @@
                          "//"
                          (System/getenv "GIGS_HOST")
                          "/"
-                         "manul08032018")})
+                         (System/getenv "GIGS_DATABASE")
+                         "?sslmode=require")
+               :user (System/getenv "GIGS_USER")
+               :password (System/getenv "GIGS_PASSWORD")})
                          
 (defentity venues)
 (defentity song_performances)
