@@ -81,13 +81,7 @@
 (defn to-count [seconds] (Math/ceil (* 4 (/ seconds (max-seconds)))))
 (defn all-dates-and-seconds-normalised [] (sort-by :date (map (fn [{:keys [date seconds]}] {:date date :count (to-count seconds) }) (all-dates-and-seconds))))
 
-;; TODO - that thing above can be switched back to dates-and-second-sessions... the thing iwth all on line 71
-;; make more endpoints for the others
-;; the DB view this relies on is wrong :(
-
 (defn date-three-months-ago [] (time/minus (time/today) (time/months 3)))
-
-;; (defn test [] (str (date-three-months-ago)))
 
 (defroutes app-routes
   (GET "/next-songs-to-play" [] (next-songs-to-play))
@@ -102,6 +96,7 @@
    :access-control-allow-origin [#"http://localhost:3449"
                                  #"http://localhost:3000"
                                  #"http://192.168.0.6:3000"
+                                 #"http://pallas.herokuapp.com"
                                  #"http://manul-frontend.herokuapp.com"]
    :access-control-allow-methods [:get :put :post :delete]
    :access-control-allow-credentials "true"))
