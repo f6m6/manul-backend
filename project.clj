@@ -7,7 +7,12 @@
                  [ring/ring-defaults "0.2.1"]
                  [korma "0.4.0"]
                  [org.postgresql/postgresql "9.2-1002-jdbc4"]
-                 [ring-cors "0.1.11"]]
+                 [ring-cors "0.1.11"]
+                 [org.clojure/data.json "0.2.6"]
+                 [clj-time "0.14.2"]
+                 [ring-logger "0.7.7"]]
+                 
+
   :plugins [[lein-ring "0.9.7"]]
   :ring {:handler manul-backend.handler/app}
   :profiles
