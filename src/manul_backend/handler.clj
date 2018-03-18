@@ -2,8 +2,7 @@
   (:require [compojure.core :refer :all]
             [compojure.route :as route]
             [ring.middleware.defaults :refer [wrap-defaults site-defaults]]
-            [clojure.string :as s]
-            [clojure.data.json :as json]
+            [clojure.string :clojure.data.json :as json]
             [clj-time.core :as time]
             [clj-time.format :as f]
             [ring.middleware.cors :refer [wrap-cors]]))
@@ -15,7 +14,7 @@
                :subprotocol "postgresql"
                :subname (str
                          "//"
-                         "localhost"
+                         (System/getenv "GIGS_HOST")
                          "/"
                          "manul08032018")})
                          
