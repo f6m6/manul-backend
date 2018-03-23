@@ -100,7 +100,7 @@
                                  #"http://localhost:3000"
                                  #"http://192.168.0.6:3000"
                                  #"http://pallas.herokuapp.com"
-                                 #"http://manul-frontend.herokuapp.com"]
+                                 #"https://pallas.herokuapp.com"]
    :access-control-allow-methods [:get :put :post :delete]
    :access-control-allow-credentials "true"))
  
