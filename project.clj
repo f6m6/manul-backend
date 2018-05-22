@@ -10,7 +10,8 @@
                  [ring-cors "0.1.11"]
                  [org.clojure/data.json "0.2.6"]
                  [clj-time "0.14.2"]
-                 [ring-logger "0.7.7"]]
+                 [ring-logger "0.7.7"]
+                 [org.clojure/core.logic "0.8.11"]]
                  
 
   :plugins [[lein-ring "0.9.7"]]
