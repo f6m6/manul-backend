@@ -82,14 +82,14 @@
 (defn all-dates-and-seconds [] (vec (to-date-and-seconds (to-d2s (dates-and-seconds-sessions-and-perfs)))))
 (defn max-seconds [] (:seconds (apply max-key :seconds (all-dates-and-seconds))))
 (defn to-count [seconds] (Math/ceil (* 4 (/ seconds (max-seconds)))))
-(defn all-dates-and-seconds-normalised [] (sort-by :date (map (fn [{:keys [date seconds]}] {:date date :count (to-count seconds) }) (all-dates-and-seconds))))
+(defn all-dates-and-seconds-sorted [] (sort-by :date (map (fn [{:keys [date seconds]}] {:date date :count (. intValue seconds)})  (all-dates-and-seconds))))
 
 (defn date-three-months-ago [] (time/minus (time/today) (time/months 3)))
 
 (defroutes app-routes
   (GET "/next-songs-to-play" [] (next-songs-to-play))
   (GET "/last-gig-date" [] (last-gig-date))
-  (GET "/normalised-count-per-day" [] (json/write-str (all-dates-and-seconds-normalised)))
+  (GET "/seconds-per-day" [] (json/write-str (all-dates-and-seconds-sorted)))
   (GET "/session-types" [] (json/write-str (vec (map (fn [row] { :id (str (:id row)) :name (:name row) })  (select session_types)))))
   (route/not-found "Not Found"))
 
