@@ -20,6 +20,15 @@ Required tables/views (already present in the restored DB):
 - Views: `view_songs_per_date`, `view_song_plays`, `next_song`
 - Compatibility views created for this backend: `view_next_songs_to_play`, `view_song_lengths_by_date`, `song_performance_dates`
 
+### Migrations
+All DB changes must be done via SQL migrations (no ad-hoc DB edits).
+
+- Migrations live in `migrations/`
+- Apply with:
+```
+psql -U postgres -d manul -f migrations/<file>.sql
+```
+
 ### Run
 In Nushell:
 ```
