@@ -163,6 +163,39 @@
         (json-response {:performanceId performance-id
                         :songs          (count songs)})))))
 
+(defn create-venue
+  "Create a venue"
+  [request]
+  (let [{:keys [venuename postcode]} (json-read request)]
+    (if (or (nil? venuename) (empty? venuename))
+      (-> (json-response {:error "venuename is required"})
+          (resp/status 400))
+      (do
+        (insert venues
+                (values {:venuename venuename
+                         :postcode  postcode}))
+        (json-response {:venuename venuename})))))
+
+(defn create-song
+  "Create a song"
+  [request]
+  (let [{:keys [title cover active key length instrumental]} (json-read request)
+        active-val (if (some? active) active true)
+        cover-val (if (some? cover) cover false)
+        instrumental-val (if (some? instrumental) instrumental false)]
+    (if (or (nil? title) (empty? title))
+      (-> (json-response {:error "title is required"})
+          (resp/status 400))
+      (do
+        (insert songs
+                (values {:title        title
+                         :cover        cover-val
+                         :active       active-val
+                         :key          key
+                         :length       length
+                         :instrumental instrumental-val}))
+        (json-response {:title title})))))
+
 (defn last-gig-date
   "Return a JSON { lastGigDate } with date of last gig"
   []
@@ -224,6 +257,8 @@
   (GET "/last-gig-date" [] (last-gig-date))
   (GET "/normalised-count-per-day" [] (json-response (all-dates-and-seconds-normalised)))
   (POST "/create-performance" request (create-performance request))
+  (POST "/create-venue" request (create-venue request))
+  (POST "/create-song" request (create-song request))
   (GET "/session-types" [] (json-response (vec (map (fn [row] {:id   (str (:id row))
                                                                :name (:name row)})  (select session_types)))))
   (route/not-found "Not Found"))
