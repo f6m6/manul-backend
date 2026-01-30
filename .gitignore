@@ -3,5 +3,7 @@
 /update_extensions.sql
 /pg_upgrade_server.log
 /.lein-repl-history
+/.lein-failures
+/lein-ring.log
 /pom.xml
 /target/
