@@ -30,6 +30,10 @@
   (-> (resp/response (json-write data))
       (resp/content-type "application/json; charset=utf-8")))
 
+(defn json-read
+  [request]
+  (json/read-str (slurp (:body request)) :key-fn keyword))
+
 (defdb heroku {:classname   "org.postgresql.Driver"
                :subprotocol "postgresql"
                :subname     (str
@@ -136,6 +140,31 @@
        vec
        json-response))
 
+(defn create-performance
+  "Create a performance and its song_performances rows"
+  [request]
+  (let [{:keys [venue songs date free openmic]} (json-read request)
+        performance-date (or date (str (time/today)))
+        free-val (if (some? free) free true)
+        openmic-val (if (some? openmic) openmic true)]
+    (if (or (nil? venue) (empty? venue) (not (seq songs)))
+      (-> (json-response {:error "venue and songs are required"})
+          (resp/status 400))
+      (let [inserted (insert performances
+                             (values {:performancedate performance-date
+                                      :venue           venue
+                                      :free            free-val
+                                      :openmic         openmic-val})
+                             (returning :id))
+            performance-id (:id inserted)]
+        (doseq [[idx song] (map-indexed vector songs)]
+          (insert song_performances
+                  (values {:song_id         song
+                           :performance_id  performance-id
+                           :setlistposition (inc idx)})))
+        (json-response {:performanceId performance-id
+                        :songs          (count songs)})))))
+
 (defn last-gig-date
   "Return a JSON { lastGigDate } with date of last gig"
   []
@@ -196,6 +225,7 @@
   (GET "/visualiser" [] (visualiser))
   (GET "/last-gig-date" [] (last-gig-date))
   (GET "/normalised-count-per-day" [] (json-response (all-dates-and-seconds-normalised)))
+  (POST "/create-performance" request (create-performance request))
   (GET "/session-types" [] (json-response (vec (map (fn [row] {:id   (str (:id row))
                                                                :name (:name row)})  (select session_types)))))
   (route/not-found "Not Found"))
