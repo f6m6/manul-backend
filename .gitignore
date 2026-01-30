@@ -1,14 +1,4 @@
-pom.xml
-pom.xml.asc
-*.jar
-*.class
-/lib/
-/classes/
-/target/
-/checkouts/
-.lein-deps-sum
-.lein-repl-history
-.lein-plugins/
-.lein-failures
-.nrepl-port
-.DS_Store
+# pg_upgrade artifacts
+/delete_old_cluster.sh
+/update_extensions.sql
+/pg_upgrade_server.log
