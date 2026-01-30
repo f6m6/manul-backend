@@ -62,6 +62,40 @@
     (is (= 400 (:status response)))
     (is (re-find #"title is required" (:body response)))))
 
+(deftest performances-with-setlists-nests-rows
+  (with-redefs [korma/exec-raw (fn [& _]
+                                 [{:id 2
+                                   :performancedate "2026-01-29"
+                                   :venue "The Dignity"
+                                   :free true
+                                   :openmic true
+                                   :setlistposition 1
+                                   :song_id "Song A"}
+                                  {:id 2
+                                   :performancedate "2026-01-29"
+                                   :venue "The Dignity"
+                                   :free true
+                                   :openmic true
+                                   :setlistposition 2
+                                   :song_id "Song B"}
+                                  {:id 1
+                                   :performancedate "2026-01-28"
+                                   :venue "The Hideaway"
+                                   :free false
+                                   :openmic false
+                                   :setlistposition nil
+                                   :song_id nil}])]
+    (let [response (performances-with-setlists)
+          body (json/read-str (:body response) :key-fn keyword)]
+      (is (= 2 (count body)))
+      (is (= 2 (:id (first body))))
+      (is (= "The Dignity" (:venue (first body))))
+      (is (= [{:position 1 :song_id "Song A"}
+              {:position 2 :song_id "Song B"}]
+             (:setlist (first body))))
+      (is (= 1 (:id (second body))))
+      (is (= [] (:setlist (second body)))))))
+
 (deftest create-song-trims-and-inserts-defaults
   (let [inserted (atom nil)]
     (with-redefs [korma/exec-raw (fn [& args]

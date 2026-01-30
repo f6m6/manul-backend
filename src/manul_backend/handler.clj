@@ -99,6 +99,36 @@
        vec
        json-response))
 
+(defn performances-with-setlists
+  "List performances with nested setlists"
+  []
+  (let [rows (exec-raw
+              ["select p.id, p.performancedate, p.venue, p.free, p.openmic,
+                       sp.setlistposition, sp.song_id
+                from performances p
+                left join song_performances sp on sp.performance_id = p.id
+                order by p.performancedate desc, p.id desc, sp.setlistposition asc"]
+              :results)
+        grouped (->> rows
+                     (group-by :id)
+                     (map (fn [[id items]]
+                            (let [base (first items)
+                                  setlist (->> items
+                                               (filter :song_id)
+                                               (map (fn [row]
+                                                      {:position (:setlistposition row)
+                                                       :song_id (:song_id row)}))
+                                               vec)]
+                              {:id id
+                               :performancedate (str (:performancedate base))
+                               :venue (:venue base)
+                               :free (:free base)
+                               :openmic (:openmic base)
+                               :setlist setlist})))
+                     (sort-by :performancedate #(compare %2 %1))
+                     vec)]
+    (json-response grouped)))
+
 (defn all-venues
   "List all venues"
   []
@@ -269,6 +299,7 @@
   (GET "/next-songs-to-play" [] (next-songs-to-play))
   (GET "/next-active-songs" [] (next-active-songs))
   (GET "/performances" [] (all-performances))
+  (GET "/performances-with-setlists" [] (performances-with-setlists))
   (GET "/venues" [] (all-venues))
   (GET "/view-song-plays" [] (view-song-plays))
   (GET "/view-song-plays-frequencies" [] (view-song-plays-frequencies))
