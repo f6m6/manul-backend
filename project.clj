@@ -13,7 +13,9 @@
                  [ring-logger "1.0.1"]]
 
   :plugins [[lein-ring "0.12.5"]]
-  :ring {:handler manul-backend.handler/app}
+  :ring {:handler manul-backend.handler/app
+         :auto-reload? true
+         :auto-refresh? true}
   :profiles
   {:dev {:dependencies [[javax.servlet/servlet-api "2.5"]
                         [ring/ring-mock "0.3.0"]]}})
