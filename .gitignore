@@ -2,3 +2,6 @@
 /delete_old_cluster.sh
 /update_extensions.sql
 /pg_upgrade_server.log
+/.lein-repl-history
+/pom.xml
+/target/
