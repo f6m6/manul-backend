@@ -150,13 +150,11 @@
     (if (or (nil? venue) (empty? venue) (not (seq songs)))
       (-> (json-response {:error "venue and songs are required"})
           (resp/status 400))
-      (let [inserted (insert performances
-                             (values {:performancedate performance-date
-                                      :venue           venue
-                                      :free            free-val
-                                      :openmic         openmic-val})
-                             (returning :id))
-            performance-id (:id inserted)]
+      (let [performance-id (insert performances
+                                   (values {:performancedate performance-date
+                                            :venue           venue
+                                            :free            free-val
+                                            :openmic         openmic-val}))]
         (doseq [[idx song] (map-indexed vector songs)]
           (insert song_performances
                   (values {:song_id         song
