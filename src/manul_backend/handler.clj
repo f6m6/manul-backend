@@ -34,6 +34,20 @@
   [request]
   (json/read-str (slurp (:body request)) :key-fn keyword))
 
+(defn normalize-id
+  [insert-result]
+  (cond
+    (map? insert-result) (or (:id insert-result) (-> insert-result vals first))
+    (sequential? insert-result) (let [first-val (first insert-result)]
+                                  (if (map? first-val)
+                                    (or (:id first-val) (-> first-val vals first))
+                                    first-val))
+    :else insert-result))
+
+(defn with-transaction
+  [f]
+  (transaction (f)))
+
 (defdb heroku {:classname   "org.postgresql.Driver"
                :subprotocol "postgresql"
                :subname     (str
@@ -144,37 +158,45 @@
   "Create a performance and its song_performances rows"
   [request]
   (let [{:keys [venue songs date free openmic]} (json-read request)
-        performance-date (or date (str (time/today)))
+        trimmed-venue (when venue (s/trim venue))
+        songs-list (if (vector? songs) songs [])
+        performance-date (if (and date (not (s/blank? date))) date (str (time/today)))
         free-val (if (some? free) free true)
         openmic-val (if (some? openmic) openmic true)]
-    (if (or (nil? venue) (empty? venue) (not (seq songs)))
+    (if (or (s/blank? trimmed-venue)
+            (not (seq songs-list))
+            (not (every? (fn [song] (and (string? song) (not (s/blank? song)))) songs-list)))
       (-> (json-response {:error "venue and songs are required"})
           (resp/status 400))
-      (let [performance-id (insert performances
-                                   (values {:performancedate performance-date
-                                            :venue           venue
-                                            :free            free-val
-                                            :openmic         openmic-val}))]
-        (doseq [[idx song] (map-indexed vector songs)]
-          (insert song_performances
-                  (values {:song_id         song
-                           :performance_id  performance-id
-                           :setlistposition (inc idx)})))
-        (json-response {:performanceId performance-id
-                        :songs          (count songs)})))))
+      (with-transaction
+       (fn []
+         (let [inserted (insert performances
+                                (values {:performancedate performance-date
+                                         :venue           trimmed-venue
+                                         :free            free-val
+                                         :openmic         openmic-val}))
+               performance-id (normalize-id inserted)]
+           (doseq [[idx song] (map-indexed vector songs-list)]
+             (insert song_performances
+                     (values {:song_id         song
+                              :performance_id  performance-id
+                              :setlistposition (inc idx)})))
+           (json-response {:performanceId performance-id
+                           :songs          (count songs-list)})))))))
 
 (defn create-venue
   "Create a venue"
   [request]
   (let [{:keys [venuename postcode]} (json-read request)]
-    (if (or (nil? venuename) (empty? venuename))
-      (-> (json-response {:error "venuename is required"})
-          (resp/status 400))
-      (do
-        (exec-raw
-         ["insert into venues (venuename, postcode) values (?, ?)"
-          [venuename postcode]])
-        (json-response {:venuename venuename})))))
+    (let [name (when venuename (s/trim venuename))]
+      (if (s/blank? name)
+        (-> (json-response {:error "venuename is required"})
+            (resp/status 400))
+        (do
+          (exec-raw
+           ["insert into venues (venuename, postcode) values (?, ?)"
+            [name postcode]])
+          (json-response {:venuename name}))))))
 
 (defn create-song
   "Create a song"
@@ -183,14 +205,15 @@
         active-val (if (some? active) active true)
         cover-val (if (some? cover) cover false)
         instrumental-val (if (some? instrumental) instrumental false)]
-    (if (or (nil? title) (empty? title))
-      (-> (json-response {:error "title is required"})
-          (resp/status 400))
-      (do
-        (exec-raw
-         ["insert into songs (title, cover, active, key, length, instrumental) values (?, ?, ?, ?, ?, ?)"
-          [title cover-val active-val key length instrumental-val]])
-        (json-response {:title title})))))
+    (let [song-title (when title (s/trim title))]
+      (if (s/blank? song-title)
+        (-> (json-response {:error "title is required"})
+            (resp/status 400))
+        (do
+          (exec-raw
+           ["insert into songs (title, cover, active, key, length, instrumental) values (?, ?, ?, ?, ?, ?)"
+            [song-title cover-val active-val key length instrumental-val]])
+          (json-response {:title song-title}))))))
 
 (defn last-gig-date
   "Return a JSON { lastGigDate } with date of last gig"
