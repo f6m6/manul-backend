@@ -6,7 +6,7 @@
                  [compojure "1.5.1"]
                  [ring/ring-defaults "0.3.2"]
                  [korma "0.4.0"]
-                 [org.postgresql/postgresql "9.2-1002-jdbc4"]
+                 [org.postgresql/postgresql "42.7.3"]
                  [ring-cors "0.1.13"]
                  [org.clojure/data.json "0.2.6"]
                  [clj-time "0.14.2"]

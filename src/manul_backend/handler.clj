@@ -7,7 +7,8 @@
             [clj-time.core :as time]
             [clj-time.format :as f]
             [ring.middleware.cors :refer [wrap-cors]]
-            [ring.util.response :as resp]))
+            [ring.util.response :as resp]
+            [clojure.java.jdbc :as jdbc]))
 
 (use 'korma.db)
 (use 'korma.core)
@@ -37,6 +38,8 @@
 (defn normalize-id
   [insert-result]
   (cond
+    (instance? java.sql.ResultSet insert-result) (let [row (first (jdbc/result-set-seq insert-result))]
+                                                  (or (:id row) (-> row vals first)))
     (map? insert-result) (or (:id insert-result) (-> insert-result vals first))
     (sequential? insert-result) (let [first-val (first insert-result)]
                                   (if (map? first-val)
@@ -170,17 +173,15 @@
           (resp/status 400))
       (with-transaction
        (fn []
-         (let [inserted (insert performances
-                                (values {:performancedate performance-date
-                                         :venue           trimmed-venue
-                                         :free            free-val
-                                         :openmic         openmic-val}))
-               performance-id (normalize-id inserted)]
+         (let [rows (exec-raw
+                     ["insert into performances (performancedate, venue, free, openmic) values (?, ?, ?, ?) returning id"
+                      [performance-date trimmed-venue free-val openmic-val]]
+                     :results)
+               performance-id (normalize-id rows)]
            (doseq [[idx song] (map-indexed vector songs-list)]
-             (insert song_performances
-                     (values {:song_id         song
-                              :performance_id  performance-id
-                              :setlistposition (inc idx)})))
+             (exec-raw
+              ["insert into song_performances (song_id, performance_id, setlistposition) values (?, ?, ?)"
+               [song performance-id (inc idx)]]))
            (json-response {:performanceId performance-id
                            :songs          (count songs-list)})))))))
 
