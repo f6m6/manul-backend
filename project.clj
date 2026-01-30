@@ -2,18 +2,17 @@
   :description "FIXME: write description"
   :url "http://example.com/FIXME"
   :min-lein-version "2.0.0"
-  :dependencies [[org.clojure/clojure "1.8.0"]
+  :dependencies [[org.clojure/clojure "1.10.2"]
                  [compojure "1.5.1"]
-                 [ring/ring-defaults "0.2.1"]
+                 [ring/ring-defaults "0.3.2"]
                  [korma "0.4.0"]
                  [org.postgresql/postgresql "9.2-1002-jdbc4"]
-                 [ring-cors "0.1.11"]
+                 [ring-cors "0.1.13"]
                  [org.clojure/data.json "0.2.6"]
                  [clj-time "0.14.2"]
-                 [ring-logger "0.7.7"]]
-                 
+                 [ring-logger "1.0.1"]]
 
-  :plugins [[lein-ring "0.9.7"]]
+  :plugins [[lein-ring "0.12.5"]]
   :ring {:handler manul-backend.handler/app}
   :profiles
   {:dev {:dependencies [[javax.servlet/servlet-api "2.5"]
