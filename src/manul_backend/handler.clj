@@ -171,9 +171,9 @@
       (-> (json-response {:error "venuename is required"})
           (resp/status 400))
       (do
-        (insert venues
-                (values {:venuename venuename
-                         :postcode  postcode}))
+        (exec-raw
+         ["insert into venues (venuename, postcode) values (?, ?)"
+          [venuename postcode]])
         (json-response {:venuename venuename})))))
 
 (defn create-song
@@ -187,13 +187,9 @@
       (-> (json-response {:error "title is required"})
           (resp/status 400))
       (do
-        (insert songs
-                (values {:title        title
-                         :cover        cover-val
-                         :active       active-val
-                         :key          key
-                         :length       length
-                         :instrumental instrumental-val}))
+        (exec-raw
+         ["insert into songs (title, cover, active, key, length, instrumental) values (?, ?, ?, ?, ?, ?)"
+          [title cover-val active-val key length instrumental-val]])
         (json-response {:title title})))))
 
 (defn last-gig-date
