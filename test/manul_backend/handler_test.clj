@@ -3,12 +3,8 @@
             [ring.mock.request :as mock]
             [manul-backend.handler :refer :all]))
 
-(deftest test-app
-  (testing "main route"
-    (let [response (app (mock/request :get "/"))]
-      (is (= (:status response) 200))
-      (is (= (:body response) "Hello World"))))
-
-  (testing "not-found route"
-    (let [response (app (mock/request :get "/invalid"))]
-      (is (= (:status response) 404)))))
+(deftest create-performance-requires-venue-and-songs
+  (let [response (app (-> (mock/request :post "/create-performance" "{}")
+                          (mock/content-type "application/json")))]
+    (is (= 400 (:status response)))
+    (is (re-find #"venue and songs are required" (:body response)))))
