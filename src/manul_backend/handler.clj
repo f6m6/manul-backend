@@ -175,7 +175,7 @@
        (fn []
          (let [rows (exec-raw
                      ["insert into performances (performancedate, venue, free, openmic) values (?, ?, ?, ?) returning id"
-                      [performance-date trimmed-venue free-val openmic-val]]
+                      [(java.sql.Date/valueOf performance-date) trimmed-venue free-val openmic-val]]
                      :results)
                performance-id (normalize-id rows)]
            (doseq [[idx song] (map-indexed vector songs-list)]
