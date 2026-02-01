@@ -770,7 +770,7 @@
   "Return yearly gig counts and estimated live minutes"
   []
   (let [rows (exec-raw
-              ["select extract(year from p.performancedate)::int as year,\n                      count(distinct p.id)::int as gigs,\n                      coalesce(ceil(sum(case\n+                                         when sp.song_id is null then 0\n+                                         else coalesce(extract(epoch from s.length), 240)\n+                                       end) / 60.0)::int, 0) as estimated_minutes\n+               from performances p\n+               left join song_performances sp on sp.performance_id = p.id\n+               left join songs s on s.title = sp.song_id\n+               group by year\n+               order by year desc"]
+              ["select extract(year from p.performancedate)::int as year,\n                      count(distinct p.id)::int as gigs,\n                      coalesce(ceil(sum(case\n               when sp.song_id is null then 0\n               else coalesce(extract(epoch from s.length), 240)\n               end) / 60.0)::int, 0) as estimated_minutes\n               from performances p\n               left join song_performances sp on sp.performance_id = p.id\n               left join songs s on s.title = sp.song_id\n               group by year\n               order by year desc"]
               :results)]
     (json-response (vec rows))))
 
