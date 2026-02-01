@@ -143,15 +143,39 @@
        vec
        json-response))
 
+(defn estimated-minutes
+  "Compute estimated minutes for a list of rows that include :length."
+  [rows]
+  (let [minutes (->> rows
+                     (map (fn [row]
+                            (let [length (:length row)]
+                              (cond
+                                (instance? java.time.Duration length)
+                                (/ (.toMillis length) 60000.0)
+                                (instance? java.sql.Time length)
+                                (/ (.getTime length) 60000.0)
+                                (instance? java.sql.Timestamp length)
+                                (/ (.getTime length) 60000.0)
+                                (instance? java.util.Date length)
+                                (/ (.getTime length) 60000.0)
+                                (some? length)
+                                (try
+                                  (/ (.getTime length) 60000.0)
+                                  (catch Exception _ 4))
+                                :else 4))))
+                     (reduce + 0))]
+    (long (Math/ceil minutes))))
+
 (defn performances-with-setlists
   "List performances with nested setlists"
   []
   (let [rows (exec-raw
               ["select p.id, p.performancedate, p.venue, p.free, p.openmic, p.gig_type,
                        p.fee_micro_gbp,
-                       sp.setlistposition, sp.song_id
+                       sp.setlistposition, sp.song_id, s.length
                 from performances p
                 left join song_performances sp on sp.performance_id = p.id
+                left join songs s on s.title = sp.song_id
                 order by p.performancedate desc, p.id desc, sp.setlistposition asc"]
               :results)
         grouped (->> rows
@@ -163,7 +187,8 @@
                                                (map (fn [row]
                                                       {:position (:setlistposition row)
                                                        :song_id (:song_id row)}))
-                                               vec)]
+                                               vec)
+                                  estimated-time (estimated-minutes items)]
                               {:id id
                                :performancedate (str (:performancedate base))
                                :venue (:venue base)
@@ -171,6 +196,7 @@
                                :openmic (:openmic base)
                                :gig_type (name (:gig_type base))
                                :fee_micro_gbp (:fee_micro_gbp base)
+                               :estimated_time_minutes estimated-time
                                :setlist setlist})))
                      (sort-by :performancedate #(compare %2 %1))
                      vec)]
@@ -186,9 +212,10 @@
       (let [rows (exec-raw
                   ["select p.id, p.performancedate, p.venue, p.free, p.openmic, p.gig_type,
                            p.fee_micro_gbp,
-                           sp.setlistposition, sp.song_id
+                           sp.setlistposition, sp.song_id, s.length
                     from performances p
                     left join song_performances sp on sp.performance_id = p.id
+                    left join songs s on s.title = sp.song_id
                     where p.venue = ?
                     order by p.performancedate desc, p.id desc, sp.setlistposition asc"
                    [venue-name]]
@@ -202,7 +229,8 @@
                                                    (map (fn [row]
                                                           {:position (:setlistposition row)
                                                            :song_id (:song_id row)}))
-                                                   vec)]
+                                                   vec)
+                                      estimated-time (estimated-minutes items)]
                                   {:id id
                                    :performancedate (str (:performancedate base))
                                    :venue (:venue base)
@@ -210,6 +238,7 @@
                                    :openmic (:openmic base)
                                    :gig_type (name (:gig_type base))
                                    :fee_micro_gbp (:fee_micro_gbp base)
+                                   :estimated_time_minutes estimated-time
                                    :setlist setlist})))
                          (sort-by :performancedate #(compare %2 %1))
                          vec)]
@@ -219,7 +248,7 @@
   "List practice sessions with nested songs"
   []
   (let [rows (exec-raw
-              ["select ps.id, ps.practiced_on, ps.total_minutes,\n                      pss.position, pss.song_title, pss.minutes\n               from practice_sessions ps\n               left join practice_session_songs pss on pss.practice_session_id = ps.id\n               order by ps.practiced_on desc, ps.id desc, pss.position asc"]
+              ["select ps.id, ps.practiced_on, ps.total_minutes,\n                      pss.position, pss.song_title, pss.minutes, s.length\n               from practice_sessions ps\n               left join practice_session_songs pss on pss.practice_session_id = ps.id\n+               left join songs s on s.title = pss.song_title\n               order by ps.practiced_on desc, ps.id desc, pss.position asc"]
               :results)
         grouped (->> rows
                      (group-by :id)
@@ -231,10 +260,12 @@
                                                     {:position (:position row)
                                                      :title (:song_title row)
                                                      :minutes (:minutes row)}))
-                                             vec)]
+                                             vec)
+                                  estimated-time (estimated-minutes items)]
                               {:id id
                                :practiced_on (str (:practiced_on base))
                                :total_minutes (:total_minutes base)
+                               :estimated_time_minutes estimated-time
                                :songs songs})))
                      (sort-by :practiced_on #(compare %2 %1))
                      vec)]

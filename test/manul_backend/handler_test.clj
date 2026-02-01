@@ -98,11 +98,12 @@
                                  [{:id 2
                                   :performancedate "2026-01-29"
                                    :venue "The Dignity"
-                                   :free true
-                                   :openmic true
-                                   :gig_type "open_mic"
-                                   :setlistposition 1
-                                   :song_id "Song A"}
+                                 :free true
+                                 :openmic true
+                                 :gig_type "open_mic"
+                                  :setlistposition 1
+                                   :song_id "Song A"
+                                   :length nil}
                                   {:id 2
                                    :performancedate "2026-01-29"
                                    :venue "The Dignity"
@@ -110,7 +111,8 @@
                                    :openmic true
                                    :gig_type "open_mic"
                                    :setlistposition 2
-                                   :song_id "Song B"}
+                                   :song_id "Song B"
+                                   :length nil}
                                   {:id 1
                                    :performancedate "2026-01-28"
                                    :venue "The Hideaway"
@@ -118,17 +120,40 @@
                                    :openmic false
                                    :gig_type "booked"
                                    :setlistposition nil
-                                   :song_id nil}])]
+                                   :song_id nil
+                                   :length nil}])]
     (let [response (performances-with-setlists)
           body (json/read-str (:body response) :key-fn keyword)]
       (is (= 2 (count body)))
       (is (= 2 (:id (first body))))
       (is (= "The Dignity" (:venue (first body))))
+      (is (= 8 (:estimated_time_minutes (first body))))
       (is (= [{:position 1 :song_id "Song A"}
               {:position 2 :song_id "Song B"}]
              (:setlist (first body))))
       (is (= 1 (:id (second body))))
       (is (= [] (:setlist (second body)))))))
+
+(deftest practice-sessions-with-songs-adds-estimated-time
+  (with-redefs [korma/exec-raw (fn [& _]
+                                 [{:id 1
+                                   :practiced_on "2026-02-01"
+                                   :total_minutes 20
+                                   :position 1
+                                   :song_title "Song A"
+                                   :minutes 10
+                                   :length nil}
+                                  {:id 1
+                                   :practiced_on "2026-02-01"
+                                   :total_minutes 20
+                                   :position 2
+                                   :song_title "Song B"
+                                   :minutes 10
+                                   :length nil}])]
+    (let [response (practice-sessions-with-songs)
+          body (json/read-str (:body response) :key-fn keyword)]
+      (is (= 1 (count body)))
+      (is (= 8 (:estimated_time_minutes (first body)))))))
 
 (deftest create-song-trims-and-inserts-defaults
   (let [inserted (atom nil)]
