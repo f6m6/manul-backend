@@ -81,6 +81,10 @@
 (defentity album_songs)
 (defentity practice_sessions)
 (defentity practice_session_songs)
+(defentity view_song_last_performed_live)
+(defentity view_song_perform_live_counts)
+(defentity view_song_last_practiced)
+(defentity view_song_practice_counts)
 
 (def gig-types #{"practice" "open_mic" "busking" "booked" "gig"})
 
@@ -161,11 +165,48 @@
                      vec)]
     (json-response grouped)))
 
+(defn venue-performances-with-setlists
+  "List performances for a venue with nested setlists"
+  [venuename]
+  (let [name (when venuename (s/trim venuename))]
+    (if (s/blank? name)
+      (-> (json-response {:error "venuename is required"})
+          (resp/status 400))
+      (let [rows (exec-raw
+                  ["select p.id, p.performancedate, p.venue, p.free, p.openmic, p.gig_type,
+                           sp.setlistposition, sp.song_id
+                    from performances p
+                    left join song_performances sp on sp.performance_id = p.id
+                    where p.venue = ?
+                    order by p.performancedate desc, p.id desc, sp.setlistposition asc"
+                   [name]]
+                  :results)
+            grouped (->> rows
+                         (group-by :id)
+                         (map (fn [[id items]]
+                                (let [base (first items)
+                                      setlist (->> items
+                                                   (filter :song_id)
+                                                   (map (fn [row]
+                                                          {:position (:setlistposition row)
+                                                           :song_id (:song_id row)}))
+                                                   vec)]
+                                  {:id id
+                                   :performancedate (str (:performancedate base))
+                                   :venue (:venue base)
+                                   :free (:free base)
+                                   :openmic (:openmic base)
+                                   :gig_type (name (:gig_type base))
+                                   :setlist setlist})))
+                         (sort-by :performancedate #(compare %2 %1))
+                         vec)]
+        (json-response grouped)))))
+
 (defn practice-sessions-with-songs
   "List practice sessions with nested songs"
   []
   (let [rows (exec-raw
-              ["select ps.id, ps.practiced_on, ps.total_minutes,\n                      pss.position, pss.song_title, pss.minutes\n+               from practice_sessions ps\n+               left join practice_session_songs pss on pss.practice_session_id = ps.id\n+               order by ps.practiced_on desc, ps.id desc, pss.position asc"]
+              ["select ps.id, ps.practiced_on, ps.total_minutes,\n                      pss.position, pss.song_title, pss.minutes\n               from practice_sessions ps\n               left join practice_session_songs pss on pss.practice_session_id = ps.id\n               order by ps.practiced_on desc, ps.id desc, pss.position asc"]
               :results)
         grouped (->> rows
                      (group-by :id)
@@ -209,10 +250,17 @@
   (let [rows (exec-raw
               ["select a.id, a.title as album_title, a.artist, a.release_date,
                       s.title as song_title, s.length, s.active, s.cover, s.instrumental, s.key,
+                      s.original_key, s.my_key, s.capo, s.bpm,
+                      vpl.last_performed_live, vpc.live_count,
+                      vpr.last_practiced, vpp.practice_count,
                       asg.track_number
                from albums a
                join album_songs asg on asg.album_id = a.id
                join songs s on s.title = asg.song_title
+               left join view_song_last_performed_live vpl on vpl.song_id = s.title
+               left join view_song_perform_live_counts vpc on vpc.song_id = s.title
+               left join view_song_last_practiced vpr on vpr.song_title = s.title
+               left join view_song_practice_counts vpp on vpp.song_title = s.title
                where a.id = ?
                order by asg.track_number asc"
                [(Integer/parseInt album-id)]]
@@ -228,7 +276,15 @@
                            :active (:active row)
                            :cover (:cover row)
                            :instrumental (:instrumental row)
-                           :key (:key row)})
+                           :key (:key row)
+                           :original_key (:original_key row)
+                           :my_key (:my_key row)
+                           :capo (:capo row)
+                           :bpm (:bpm row)
+                           :last_performed_live (when-let [d (:last_performed_live row)] (str d))
+                           :live_count (:live_count row)
+                           :last_practiced (when-let [d (:last_practiced row)] (str d))
+                           :practice_count (:practice_count row)})
                         rows)]
         (json-response {:id (:id album)
                         :title (:album_title album)
@@ -642,6 +698,8 @@
   (GET "/next-active-songs" [] (next-active-songs))
   (GET "/performances" [] (all-performances))
   (GET "/performances-with-setlists" [] (performances-with-setlists))
+  (GET "/venues/:venuename/performances" [venuename]
+       (venue-performances-with-setlists venuename))
   (GET "/practice-sessions" [] (practice-sessions-with-songs))
   (POST "/practice-sessions" request (create-practice-session request))
   (DELETE "/practice-sessions/:id" [id] (delete-practice-session id))
