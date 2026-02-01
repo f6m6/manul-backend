@@ -132,7 +132,8 @@
 
 (deftest create-song-trims-and-inserts-defaults
   (let [inserted (atom nil)]
-    (with-redefs [korma/exec-raw (fn [& args]
+    (with-redefs [with-transaction (fn [f] (f))
+                  korma/exec-raw (fn [& args]
                                    (let [[sql params] (if (vector? (first args))
                                                        (first args)
                                                        (second args))]
@@ -147,13 +148,62 @@
         (is (= ["Song A" false true nil nil false nil nil nil nil nil] (:params @inserted)))
         (is (= "Song A" (:title response-body)))))))
 
+(deftest create-song-inserts-album-association
+  (let [calls (atom [])]
+    (with-redefs [with-transaction (fn [f] (f))
+                  korma/exec-raw (fn [& args]
+                                   (let [[sql params] (if (vector? (first args))
+                                                       (first args)
+                                                       (second args))]
+                                     (swap! calls conj {:sql sql :params params})
+                                     :ok))]
+      (let [body (json/write-str {:title "Song A" :album_id 2})
+            response (create-song (-> (mock/request :post "/create-song" body)
+                                      (mock/content-type "application/json")))]
+        (is (= 200 (:status response)))
+        (is (some #(re-find #"insert into songs" (:sql %)) @calls))
+        (is (some #(and (re-find #"insert into album_songs" (:sql %))
+                        (= [2 "Song A"] (:params %)))
+                  @calls))))))
+
 (deftest update-song-returns-404-when-missing
-  (with-redefs [korma/exec-raw (fn [& _] [])]
+  (with-redefs [with-transaction (fn [f] (f))
+                korma/exec-raw (fn [& _] [])]
     (let [body (json/write-str {:active false})
           response (update-song "Missing" (-> (mock/request :put "/songs/Missing" body)
                                               (mock/content-type "application/json")))]
       (is (= 404 (:status response)))
       (is (re-find #"song not found" (:body response))))))
+
+(deftest update-song-upserts-album-association
+  (let [calls (atom [])]
+    (with-redefs [with-transaction (fn [f] (f))
+                  korma/exec-raw (fn [& args]
+                                   (let [[sql params] (if (vector? (first args))
+                                                       (first args)
+                                                       (second args))]
+                                     (swap! calls conj {:sql sql :params params})
+                                     (cond
+                                       (re-find #"update songs" sql) [{:title "Song A"
+                                                                       :cover false
+                                                                       :active true
+                                                                       :key nil
+                                                                       :length nil
+                                                                       :instrumental false
+                                                                       :artist nil
+                                                                       :bpm nil
+                                                                       :original_key nil
+                                                                       :my_key nil
+                                                                       :capo nil}]
+                                       :else :ok)))]
+      (let [body (json/write-str {:album_id 3})
+            response (update-song "Song A" (-> (mock/request :put "/songs/Song%20A" body)
+                                               (mock/content-type "application/json")))]
+        (is (= 200 (:status response)))
+        (is (some #(re-find #"delete from album_songs" (:sql %)) @calls))
+        (is (some #(and (re-find #"insert into album_songs" (:sql %))
+                        (= [3 "Song A"] (:params %)))
+                  @calls))))))
 
 (deftest update-venue-updates-postcode
   (with-redefs [korma/exec-raw (fn [& _] [{:venuename "The Place" :postcode "AB12"}])]

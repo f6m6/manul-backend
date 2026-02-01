@@ -117,10 +117,16 @@
 (defn all-songs
   "List all songs in the system"
   []
-  (->> (select songs)
-       (map (fn [row] (clojure.core/update (clojure.core/update row :id str) :length str)))
-       vec
-       json-response))
+  (let [rows (exec-raw
+              ["select distinct on (s.title)\n                      s.*, a.id as album_id, a.title as album_title\n               from songs s\n               left join album_songs asg on asg.song_title = s.title\n               left join albums a on a.id = asg.album_id\n               order by s.title, a.id"]
+              :results)]
+    (->> rows
+         (map (fn [row]
+                (-> row
+                    (clojure.core/update :id str)
+                    (clojure.core/update :length str))))
+         vec
+         json-response)))
 
 (defn next-active-songs
   "Return a JSON array with active songs, play count and time since last play"
@@ -577,28 +583,35 @@
 (defn create-song
   "Create a song"
   [request]
-  (let [{:keys [title cover active key length instrumental artist bpm original_key my_key capo]} (json-read request)
+  (let [{:keys [title cover active key length instrumental artist bpm original_key my_key capo album_id]} (json-read request)
         active-val (if (some? active) active true)
         cover-val (if (some? cover) cover false)
         instrumental-val (if (some? instrumental) instrumental false)
         bpm-val (when (and (some? bpm) (not (s/blank? (str bpm))))
                   (Integer/parseInt (str bpm)))
         capo-val (when (and (some? capo) (not (s/blank? (str capo))))
-                   (Integer/parseInt (str capo)))]
+                   (Integer/parseInt (str capo)))
+        album-id (when (and (some? album_id) (not (s/blank? (str album_id))))
+                   (Integer/parseInt (str album_id)))]
     (let [song-title (when title (s/trim title))]
       (if (s/blank? song-title)
         (-> (json-response {:error "title is required"})
             (resp/status 400))
-        (do
-          (exec-raw
-           ["insert into songs (title, cover, active, key, length, instrumental, artist, bpm, original_key, my_key, capo) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-            [song-title cover-val active-val key length instrumental-val artist bpm-val original_key my_key capo-val]])
-          (json-response {:title song-title}))))))
+        (with-transaction
+         (fn []
+           (exec-raw
+            ["insert into songs (title, cover, active, key, length, instrumental, artist, bpm, original_key, my_key, capo) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+             [song-title cover-val active-val key length instrumental-val artist bpm-val original_key my_key capo-val]])
+           (when album-id
+             (exec-raw
+              ["insert into album_songs (album_id, song_title) values (?, ?)"
+               [album-id song-title]]))
+           (json-response {:title song-title})))))))
 
 (defn update-song
   "Update song fields"
   [title request]
-  (let [{:keys [cover active key length instrumental artist bpm original_key my_key capo]} (json-read request)
+  (let [{:keys [cover active key length instrumental artist bpm original_key my_key capo album_id]} (json-read request)
         song-title (when title (s/trim title))
         active-val (if (some? active) active true)
         cover-val (if (some? cover) cover false)
@@ -607,29 +620,41 @@
         bpm-val (when (and (some? bpm) (not (s/blank? (str bpm))))
                   (Integer/parseInt (str bpm)))
         capo-val (when (and (some? capo) (not (s/blank? (str capo))))
-                   (Integer/parseInt (str capo)))]
+                   (Integer/parseInt (str capo)))
+        album-id (when (and (some? album_id) (not (s/blank? (str album_id))))
+                   (Integer/parseInt (str album_id)))]
     (if (s/blank? song-title)
       (-> (json-response {:error "title is required"})
           (resp/status 400))
-      (let [rows (exec-raw
-                  ["update songs set cover = ?, active = ?, key = ?, length = ?, instrumental = ?, artist = ?, bpm = ?, original_key = ?, my_key = ?, capo = ? where title = ? returning title, cover, active, key, length, instrumental, artist, bpm, original_key, my_key, capo"
-                   [cover-val active-val key length-val instrumental-val artist bpm-val original_key my_key capo-val song-title]]
-                  :results)
-            row (first rows)]
-        (if (nil? row)
-          (-> (json-response {:error "song not found"})
-              (resp/status 404))
-          (json-response {:title (:title row)
-                          :cover (:cover row)
-                          :active (:active row)
-                          :key (:key row)
-                          :length (when-let [l (:length row)] (str l))
-                          :instrumental (:instrumental row)
-                          :artist (:artist row)
-                          :bpm (:bpm row)
-                          :original_key (:original_key row)
-                          :my_key (:my_key row)
-                          :capo (:capo row)}))))))
+      (with-transaction
+       (fn []
+         (let [rows (exec-raw
+                     ["update songs set cover = ?, active = ?, key = ?, length = ?, instrumental = ?, artist = ?, bpm = ?, original_key = ?, my_key = ?, capo = ? where title = ? returning title, cover, active, key, length, instrumental, artist, bpm, original_key, my_key, capo"
+                      [cover-val active-val key length-val instrumental-val artist bpm-val original_key my_key capo-val song-title]]
+                     :results)
+               row (first rows)]
+           (if (nil? row)
+             (-> (json-response {:error "song not found"})
+                 (resp/status 404))
+             (do
+               (exec-raw
+                ["delete from album_songs where song_title = ?"
+                 [song-title]])
+               (when album-id
+                 (exec-raw
+                  ["insert into album_songs (album_id, song_title) values (?, ?)"
+                   [album-id song-title]]))
+               (json-response {:title (:title row)
+                               :cover (:cover row)
+                               :active (:active row)
+                               :key (:key row)
+                               :length (when-let [l (:length row)] (str l))
+                               :instrumental (:instrumental row)
+                               :artist (:artist row)
+                               :bpm (:bpm row)
+                               :original_key (:original_key row)
+                               :my_key (:my_key row)
+                               :capo (:capo row)})))))))))
 
 (defn delete-song
   "Delete a song"
