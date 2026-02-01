@@ -20,8 +20,10 @@ UPDATE album_songs asg
 SET track_number = NULL
 FROM wallflowers, tracks, songs
 WHERE asg.album_id = wallflowers.id
-  AND asg.song_title = songs.title
-  AND lower(songs.title) = lower(tracks.title);
+  AND (
+    lower(asg.song_title) = lower(tracks.title)
+    OR asg.track_number = tracks.track_number
+  );
 
 WITH wallflowers AS (
   SELECT id FROM albums WHERE title = 'Bringing Down The Horse' LIMIT 1
