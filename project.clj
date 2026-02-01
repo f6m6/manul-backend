@@ -14,6 +14,8 @@
 
   :plugins [[lein-ring "0.12.5"]]
   :ring {:handler manul-backend.handler/app
+         :host "0.0.0.0"
+         :port 3000
          :auto-reload? true
          :auto-refresh? true
          :reload-paths ["src"]}
