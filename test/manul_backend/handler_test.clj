@@ -306,6 +306,15 @@
       (is (= "The Place" (:venuename response-body)))
       (is (= "AB12" (:postcode response-body))))))
 
+(deftest live-gigs-by-year-returns-stats
+  (with-redefs [korma/exec-raw (fn [& _]
+                                 [{:year 2023 :gigs 5 :estimated_minutes 120}
+                                  {:year 2022 :gigs 2 :estimated_minutes 45}])]
+    (let [response (live-gigs-by-year)
+          body (json/read-str (:body response) :key-fn keyword)]
+      (is (= 2 (count body)))
+      (is (= {:year 2023 :gigs 5 :estimated_minutes 120} (first body))))))
+
 (deftest replace-performance-setlist-validates-songs
   (let [body (json/write-str {:songs ["Song A" ""]})
         response (replace-performance-setlist "1" (-> (mock/request :put "/performances/1/setlist" body)
