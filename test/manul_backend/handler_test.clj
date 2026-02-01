@@ -185,6 +185,18 @@
       (is (= 1 (count body)))
       (is (= 2 (count (:songs (first body))))))))
 
+(deftest singing-lessons-query-has-no-plus
+  (let [captured (atom nil)]
+    (with-redefs [korma/exec-raw (fn [& args]
+                                   (let [[sql] (if (vector? (first args))
+                                                 (first args)
+                                                 (second args))]
+                                     (reset! captured sql)
+                                     []))]
+      (singing-lessons-with-songs)
+      (is (re-find #"from singing_lessons" @captured))
+      (is (not (re-find #"\\+\\s*left join" @captured))))))
+
 (deftest create-singing-lesson-inserts-songs
   (let [calls (atom [])]
     (with-redefs [with-transaction (fn [f] (f))
