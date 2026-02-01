@@ -342,6 +342,21 @@
       (is (= 400 (:status response)))
       (is (re-find #"songs are required" (:body response))))))
 
+(deftest update-practice-session-returns-404-when-missing
+  (with-redefs [with-transaction (fn [f] (f))
+                korma/exec-raw (fn [& args]
+                                 (let [[sql] (if (vector? (first args))
+                                               (first args)
+                                               (second args))]
+                                   (if (re-find #"update practice_sessions" sql)
+                                     []
+                                     :ok)))]
+    (let [body (json/write-str {:date "2026-02-01" :songs ["Song A"]})
+          response (update-practice-session "999" (-> (mock/request :put "/practice-sessions/999" body)
+                                                      (mock/content-type "application/json")))]
+      (is (= 404 (:status response)))
+      (is (re-find #"practice session not found" (:body response))))))
+
 (deftest create-song-trims-and-inserts-defaults
   (let [inserted (atom nil)]
     (with-redefs [with-transaction (fn [f] (f))
