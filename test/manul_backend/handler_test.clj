@@ -71,6 +71,27 @@
     (is (= 400 (:status response)))
     (is (re-find #"gig_type is invalid" (:body response)))))
 
+(deftest create-performance-trims-gig-type
+  (let [performance-insert (atom nil)]
+    (with-redefs [with-transaction (fn [f] (f))
+                  korma/exec-raw (fn [& args]
+                                   (let [[sql params with-results?] (if (vector? (first args))
+                                                                      [(first args) (second (first args)) (second args)]
+                                                                      [(second args) (second (second args)) (nth args 2 nil)])]
+                                     (cond
+                                       (re-find #"insert into performances" (first sql)) (do
+                                                                                           (reset! performance-insert {:sql sql :params params})
+                                                                                           [{:id 55}])
+                                       (re-find #"insert into song_performances" (first sql)) :ok
+                                       :else :ok)))]
+      (let [body (json/write-str {:venue "The Place" :songs ["Song A"] :gig_type "  open_mic  "})
+            response (create-performance (-> (mock/request :post "/create-performance" body)
+                                             (mock/content-type "application/json")))
+            response-body (json/read-str (:body response) :key-fn keyword)]
+        (is (= 200 (:status response)))
+        (is (= 55 (:performanceId response-body)))
+        (is (= "open_mic" (nth (:params @performance-insert) 5)))))))
+
 (deftest create-performance-requires-nonblank-song-titles
   (let [body (json/write-str {:venue "The Place" :songs [" " "\t"]})
         response (create-performance (-> (mock/request :post "/create-performance" body)
