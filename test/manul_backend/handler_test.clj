@@ -165,7 +165,28 @@
                                      []))]
       (practice-sessions-with-songs)
       (is (re-find #"left join songs" @captured))
+      (is (re-find #"song_id" @captured))
       (is (not (re-find #"\\+\\s*left join" @captured))))))
+
+(deftest create-practice-session-inserts-song-id
+  (let [calls (atom [])]
+    (with-redefs [with-transaction (fn [f] (f))
+                  korma/exec-raw (fn [& args]
+                                   (let [[sql params] (if (vector? (first args))
+                                                       (first args)
+                                                       (second args))]
+                                     (swap! calls conj {:sql sql :params params})
+                                     (if (re-find #"returning id" sql)
+                                       [{:id 7}]
+                                       :ok)))]
+      (let [body (json/write-str {:date "2026-02-01" :songs ["Song A"]})
+            response (create-practice-session (-> (mock/request :post "/practice-sessions" body)
+                                                  (mock/content-type "application/json")))]
+        (is (= 200 (:status response)))
+        (let [insert (some #(when (re-find #"insert into practice_session_songs" (:sql %)) %) @calls)]
+          (is insert)
+          (is (re-find #"song_id" (:sql insert)))
+          (is (= [7 "Song A" "Song A" 1 nil] (:params insert))))))))
 
 (deftest create-song-trims-and-inserts-defaults
   (let [inserted (atom nil)]
@@ -296,4 +317,8 @@
         (is (= 200 (:status response)))
         (is (= 42 (:id response-body)))
         (is (some #(re-find #"delete from practice_session_songs" (:sql %)) @calls))
-        (is (some #(re-find #"insert into practice_session_songs" (:sql %)) @calls))))))
+        (let [inserts (filter #(re-find #"insert into practice_session_songs" (:sql %)) @calls)]
+          (is (= 2 (count inserts)))
+          (is (every? #(re-find #"song_id" (:sql %)) inserts))
+          (is (= [42 "Song A" "Song A" 1 10] (:params (first inserts))))
+          (is (= [42 "Song B" "Song B" 2 20] (:params (second inserts)))))))))
