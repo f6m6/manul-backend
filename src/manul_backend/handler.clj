@@ -248,7 +248,7 @@
   "List practice sessions with nested songs"
   []
   (let [rows (exec-raw
-              ["select ps.id, ps.practiced_on, ps.total_minutes,\n                      pss.position, pss.song_title, pss.minutes, s.length\n               from practice_sessions ps\n               left join practice_session_songs pss on pss.practice_session_id = ps.id\n+               left join songs s on s.title = pss.song_title\n               order by ps.practiced_on desc, ps.id desc, pss.position asc"]
+              ["select ps.id, ps.practiced_on, ps.total_minutes,\n                      pss.position, pss.song_title, pss.minutes, s.length\n               from practice_sessions ps\n               left join practice_session_songs pss on pss.practice_session_id = ps.id\n               left join songs s on s.title = pss.song_title\n               order by ps.practiced_on desc, ps.id desc, pss.position asc"]
               :results)
         grouped (->> rows
                      (group-by :id)

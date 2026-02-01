@@ -155,6 +155,18 @@
       (is (= 1 (count body)))
       (is (= 8 (:estimated_time_minutes (first body)))))))
 
+(deftest practice-sessions-query-has-no-plus
+  (let [captured (atom nil)]
+    (with-redefs [korma/exec-raw (fn [& args]
+                                   (let [[sql] (if (vector? (first args))
+                                                 (first args)
+                                                 (second args))]
+                                     (reset! captured sql)
+                                     []))]
+      (practice-sessions-with-songs)
+      (is (re-find #"left join songs" @captured))
+      (is (not (re-find #"\\+\\s*left join" @captured))))))
+
 (deftest create-song-trims-and-inserts-defaults
   (let [inserted (atom nil)]
     (with-redefs [with-transaction (fn [f] (f))
