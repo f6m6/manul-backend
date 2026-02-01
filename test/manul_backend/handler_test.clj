@@ -64,6 +64,14 @@
         (is (= 0 (nth (:params @performance-insert) 4)))
         (is (= "showcase" (nth (:params @performance-insert) 5)))))))
 
+(deftest update-performance-rejects-invalid-gig-type
+  (with-redefs [korma/exec-raw (fn [& _] [])]
+    (let [body (json/write-str {:venue "The Place" :date "2026-02-01" :gig_type "invalid_type"})
+          response (update-performance "42" (-> (mock/request :put "/performances/42" body)
+                                               (mock/content-type "application/json")))]
+      (is (= 400 (:status response)))
+      (is (re-find #"gig_type is invalid" (:body response))))))
+
 (deftest create-venue-requires-name
   (let [response (app (-> (mock/request :post "/create-venue" "{}")
                           (mock/content-type "application/json")))]
