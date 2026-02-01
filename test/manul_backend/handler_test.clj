@@ -459,6 +459,11 @@
         (let [update (first @calls)]
           (is (nil? (nth (:params update) 3))))))))
 
+(deftest normalize-length-interval-handles-blanks
+  (is (nil? (normalize-length-interval nil)))
+  (is (nil? (normalize-length-interval "")))
+  (is (nil? (normalize-length-interval "   "))))
+
 (deftest create-song-inserts-album-association
   (let [calls (atom [])]
     (with-redefs [with-transaction (fn [f] (f))
