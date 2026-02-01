@@ -75,6 +75,8 @@
 (defentity view_songs_per_date)
 (defentity next_song)
 (defentity song_performance_dates)
+(defentity albums)
+(defentity album_songs)
 
 (def gig-types #{"practice" "open_mic" "busking" "booked" "gig"})
 
@@ -161,6 +163,21 @@
   (->> (select venues (fields :venuename :postcode))
        vec
        json-response))
+
+(defn all-albums
+  "List all albums"
+  []
+  (->> (select albums (fields :id :title :artist :release_date))
+       (map (fn [row]
+              (cond-> row
+                (:release_date row) (clojure.core/update :release_date str))))
+       vec
+       json-response))
+
+(defn album-tracks
+  "Return tracks for an album with ordering"
+  [album-id]
+  (let [rows (exec-raw
 
 (defn update-venue
   "Update venue postcode"
@@ -497,6 +514,8 @@
   (PUT "/performances/:id" [id :as request] (update-performance id request))
   (PUT "/performances/:id/setlist" [id :as request] (replace-performance-setlist id request))
   (DELETE "/performances/:id" [id] (delete-performance id))
+  (GET "/albums" [] (all-albums))
+  (GET "/albums/:id/tracks" [id] (album-tracks id))
   (GET "/venues" [] (all-venues))
   (PUT "/venues/:venuename" [venuename :as request] (update-venue venuename request))
   (DELETE "/venues/:venuename" [venuename] (delete-venue venuename))
