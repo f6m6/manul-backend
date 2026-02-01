@@ -422,35 +422,43 @@
 (defn create-song
   "Create a song"
   [request]
-  (let [{:keys [title cover active key length instrumental]} (json-read request)
+  (let [{:keys [title cover active key length instrumental artist bpm original_key my_key capo]} (json-read request)
         active-val (if (some? active) active true)
         cover-val (if (some? cover) cover false)
-        instrumental-val (if (some? instrumental) instrumental false)]
+        instrumental-val (if (some? instrumental) instrumental false)
+        bpm-val (when (and (some? bpm) (not (s/blank? (str bpm))))
+                  (Integer/parseInt (str bpm)))
+        capo-val (when (and (some? capo) (not (s/blank? (str capo))))
+                   (Integer/parseInt (str capo)))]
     (let [song-title (when title (s/trim title))]
       (if (s/blank? song-title)
         (-> (json-response {:error "title is required"})
             (resp/status 400))
         (do
           (exec-raw
-           ["insert into songs (title, cover, active, key, length, instrumental) values (?, ?, ?, ?, ?, ?)"
-            [song-title cover-val active-val key length instrumental-val]])
+           ["insert into songs (title, cover, active, key, length, instrumental, artist, bpm, original_key, my_key, capo) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            [song-title cover-val active-val key length instrumental-val artist bpm-val original_key my_key capo-val]])
           (json-response {:title song-title}))))))
 
 (defn update-song
   "Update song fields"
   [title request]
-  (let [{:keys [cover active key length instrumental]} (json-read request)
+  (let [{:keys [cover active key length instrumental artist bpm original_key my_key capo]} (json-read request)
         song-title (when title (s/trim title))
         active-val (if (some? active) active true)
         cover-val (if (some? cover) cover false)
         instrumental-val (if (some? instrumental) instrumental false)
-        length-val (if (and length (s/blank? (str length))) nil length)]
+        length-val (if (and length (s/blank? (str length))) nil length)
+        bpm-val (when (and (some? bpm) (not (s/blank? (str bpm))))
+                  (Integer/parseInt (str bpm)))
+        capo-val (when (and (some? capo) (not (s/blank? (str capo))))
+                   (Integer/parseInt (str capo)))]
     (if (s/blank? song-title)
       (-> (json-response {:error "title is required"})
           (resp/status 400))
       (let [rows (exec-raw
-                  ["update songs set cover = ?, active = ?, key = ?, length = ?, instrumental = ? where title = ? returning title, cover, active, key, length, instrumental"
-                   [cover-val active-val key length-val instrumental-val song-title]]
+                  ["update songs set cover = ?, active = ?, key = ?, length = ?, instrumental = ?, artist = ?, bpm = ?, original_key = ?, my_key = ?, capo = ? where title = ? returning title, cover, active, key, length, instrumental, artist, bpm, original_key, my_key, capo"
+                   [cover-val active-val key length-val instrumental-val artist bpm-val original_key my_key capo-val song-title]]
                   :results)
             row (first rows)]
         (if (nil? row)
@@ -461,7 +469,12 @@
                           :active (:active row)
                           :key (:key row)
                           :length (when-let [l (:length row)] (str l))
-                          :instrumental (:instrumental row)}))))))
+                          :instrumental (:instrumental row)
+                          :artist (:artist row)
+                          :bpm (:bpm row)
+                          :original_key (:original_key row)
+                          :my_key (:my_key row)
+                          :capo (:capo row)}))))))
 
 (defn delete-song
   "Delete a song"

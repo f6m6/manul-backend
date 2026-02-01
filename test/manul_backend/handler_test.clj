@@ -113,7 +113,7 @@
             response-body (json/read-str (:body response) :key-fn keyword)]
         (is (= 200 (:status response)))
         (is (re-find #"insert into songs" (:sql @inserted)))
-        (is (= ["Song A" false true nil nil false] (:params @inserted)))
+        (is (= ["Song A" false true nil nil false nil nil nil nil nil] (:params @inserted)))
         (is (= "Song A" (:title response-body)))))))
 
 (deftest update-song-returns-404-when-missing
