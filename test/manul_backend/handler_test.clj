@@ -246,6 +246,15 @@
       (is (= 400 (:status response)))
       (is (re-find #"songs are required" (:body response))))))
 
+(deftest create-singing-lesson-rejects-blank-song-titles
+  (with-redefs [with-transaction (fn [f] (f))
+                korma/exec-raw (fn [& _] :ok)]
+    (let [body (json/write-str {:date "2026-02-01" :songs [" " "\t"]})
+          response (create-singing-lesson (-> (mock/request :post "/singing-lessons" body)
+                                              (mock/content-type "application/json")))]
+      (is (= 400 (:status response)))
+      (is (re-find #"songs are required" (:body response))))))
+
 (deftest update-singing-lesson-upserts-songs
   (let [calls (atom [])]
     (with-redefs [with-transaction (fn [f] (f))
