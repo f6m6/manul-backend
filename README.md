@@ -8,20 +8,15 @@ REST API for the Manul gig tracker. This service reads from a local PostgreSQL d
 ## Quickstart
 
 ### Prereqs
-- Java 8 (recommended for older Clojure tooling)
+- Java (Temurin 17 recommended)
 - Leiningen 2.x
-- PostgreSQL 14 (Homebrew recommended)
+- PostgreSQL
 
 ### Database
-This backend expects a local Postgres database (restored from your old Postgres.app data dir). The recovered DB name is `manul`.
-
-Required tables/views (already present in the restored DB):
-- Tables: `songs`, `performances`, `song_performances`, `venues`
-- Views: `view_songs_per_date`, `view_song_plays`, `next_song`
-- Compatibility views created for this backend: `view_next_songs_to_play`, `view_song_lengths_by_date`, `song_performance_dates`
+This backend expects a local Postgres database named `manul` with tables/views already present.
 
 ### Migrations
-All DB changes must be done via SQL migrations (no ad-hoc DB edits).
+All DB changes must be done via SQL migrations (no ad‑hoc DB edits).
 
 - Migrations live in `migrations/`
 - Apply with:
@@ -42,24 +37,23 @@ $env.GIGS_SSLMODE = "disable"
 
 lein ring server
 ```
+
 Server runs on `http://localhost:3000`.
 
-### Useful endpoints
+## Useful endpoints
 - `/all-songs`
-- `/next-songs-to-play`
-- `/next-active-songs`
-- `/performances`
+- `/next-songs-to-perform-live`
+- `/next-songs-to-practise`
+- `/performances-with-setlists`
 - `/venues`
-- `/view-song-plays`
-- `/view-song-plays-frequencies`
-- `/song-performance-dates`
-- `/normalised-count-per-day`
+- `/albums/:id/tracks`
+- `/practice-sessions`
 - `/last-gig-date`
 
-## Relationship to other repos
-- **manul-frontend** calls this API and expects the legacy endpoints listed above.
-- **pallas** is an alternate UI that also uses this API.
+## Conventions
+- Prefer TDD: add or update tests before functional changes.
+- Keep naming consistent ("performed live" vs "practise").
 
-## Notes
-- CORS allows local frontend ports (3001, 3449).
-- If you rename the DB to `gigs`, update `GIGS_DATABASE`.
+## Relationship to other repos
+- **manul-frontend** calls this API and expects legacy endpoints like `/next-songs-to-play`.
+- **pallas** is the current React UI.
