@@ -329,6 +329,21 @@
         (is (re-find #"\\?::interval" (:sql @inserted)))
         (is (= "00:02:52" (nth (:params @inserted) 4)))))))
 
+(deftest create-song-normalizes-short-length
+  (let [inserted (atom nil)]
+    (with-redefs [with-transaction (fn [f] (f))
+                  korma/exec-raw (fn [& args]
+                                   (let [[sql params] (if (vector? (first args))
+                                                       (first args)
+                                                       (second args))]
+                                     (reset! inserted {:sql sql :params params})
+                                     :ok))]
+      (let [body (json/write-str {:title "Song A" :length "2:05"})
+            response (create-song (-> (mock/request :post "/create-song" body)
+                                      (mock/content-type "application/json")))]
+        (is (= 200 (:status response)))
+        (is (= "00:02:05" (nth (:params @inserted) 4)))))))
+
 (deftest create-song-inserts-album-association
   (let [calls (atom [])]
     (with-redefs [with-transaction (fn [f] (f))
