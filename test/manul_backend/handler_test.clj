@@ -157,13 +157,13 @@
                                                        (second args))]
                                      (swap! calls conj {:sql sql :params params})
                                      :ok))]
-      (let [body (json/write-str {:title "Song A" :album_id 2})
+      (let [body (json/write-str {:title "Song A" :album_id 2 :track_number 3})
             response (create-song (-> (mock/request :post "/create-song" body)
                                       (mock/content-type "application/json")))]
         (is (= 200 (:status response)))
         (is (some #(re-find #"insert into songs" (:sql %)) @calls))
         (is (some #(and (re-find #"insert into album_songs" (:sql %))
-                        (= [2 "Song A"] (:params %)))
+                        (= [2 "Song A" 3] (:params %)))
                   @calls))))))
 
 (deftest update-song-returns-404-when-missing
@@ -196,13 +196,13 @@
                                                                        :my_key nil
                                                                        :capo nil}]
                                        :else :ok)))]
-      (let [body (json/write-str {:album_id 3})
+      (let [body (json/write-str {:album_id 3 :track_number 8})
             response (update-song "Song A" (-> (mock/request :put "/songs/Song%20A" body)
                                                (mock/content-type "application/json")))]
         (is (= 200 (:status response)))
         (is (some #(re-find #"delete from album_songs" (:sql %)) @calls))
         (is (some #(and (re-find #"insert into album_songs" (:sql %))
-                        (= [3 "Song A"] (:params %)))
+                        (= [3 "Song A" 8] (:params %)))
                   @calls))))))
 
 (deftest update-venue-updates-postcode
