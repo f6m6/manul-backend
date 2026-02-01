@@ -15,6 +15,8 @@
 
 (def gigs-sslmode (or (System/getenv "GIGS_SSLMODE") "disable"))
 
+(declare normalize-length-interval)
+
 (defn json-write
   [data]
   (json/write-str
@@ -670,7 +672,7 @@
                    (Integer/parseInt (str album_id)))
         track-num (when (and (some? track_number) (not (s/blank? (str track_number))))
                     (Integer/parseInt (str track_number)))
-        length-val (if (and length (s/blank? (str length))) nil length)]
+        length-val (normalize-length-interval length)]
     (let [song-title (when title (s/trim title))]
       (if (s/blank? song-title)
         (-> (json-response {:error "title is required"})
@@ -694,7 +696,7 @@
         active-val (if (some? active) active true)
         cover-val (if (some? cover) cover false)
         instrumental-val (if (some? instrumental) instrumental false)
-        length-val (if (and length (s/blank? (str length))) nil length)
+        length-val (normalize-length-interval length)
         bpm-val (when (and (some? bpm) (not (s/blank? (str bpm))))
                   (Integer/parseInt (str bpm)))
         capo-val (when (and (some? capo) (not (s/blank? (str capo))))
@@ -767,6 +769,17 @@
 (defn stringify
   [date]
   (first (s/split (str date) #"\.")))
+
+(defn normalize-length-interval
+  [value]
+  (let [raw (when (some? value) (s/trim (str value)))]
+    (cond
+      (s/blank? raw) nil
+      (re-matches #"^\d{1,2}:\d{2}:\d{2}$" raw) raw
+      (re-matches #"^\d{1,2}:\d{2}$" raw)
+      (let [[m s] (s/split raw #":")]
+        (format "00:%02d:%02d" (Integer/parseInt m) (Integer/parseInt s)))
+      :else raw)))
 
 ;; Getting seq of { :date, :count = minutes } maps out of sessions
 (defn to-array [session] (vals (select-keys session [:start :end])))

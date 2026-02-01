@@ -220,7 +220,7 @@
                                       (mock/content-type "application/json")))]
         (is (= 200 (:status response)))
         (is (re-find #"\\?::interval" (:sql @inserted)))
-        (is (= "02:52" (nth (:params @inserted) 4)))))))
+        (is (= "00:02:52" (nth (:params @inserted) 4)))))))
 
 (deftest create-song-inserts-album-association
   (let [calls (atom [])]
@@ -294,7 +294,7 @@
         (is (= 200 (:status response)))
         (let [update (first @calls)]
           (is (re-find #"\\?::interval" (:sql update)))
-          (is (= "02:52" (nth (:params update) 3))))))))
+          (is (= "00:02:52" (nth (:params update) 3))))))))
 
 (deftest update-venue-updates-postcode
   (with-redefs [korma/exec-raw (fn [& _] [{:venuename "The Place" :postcode "AB12"}])]
