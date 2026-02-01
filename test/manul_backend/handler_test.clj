@@ -78,6 +78,13 @@
     (is (= 400 (:status response)))
     (is (re-find #"venue and songs are required" (:body response)))))
 
+(deftest create-performance-requires-nonblank-venue
+  (let [body (json/write-str {:venue "   " :songs ["Song A"]})
+        response (create-performance (-> (mock/request :post "/create-performance" body)
+                                         (mock/content-type "application/json")))]
+    (is (= 400 (:status response)))
+    (is (re-find #"venue and songs are required" (:body response)))))
+
 (deftest update-performance-rejects-invalid-gig-type
   (with-redefs [korma/exec-raw (fn [& _] [])]
     (let [body (json/write-str {:venue "The Place" :date "2026-02-01" :gig_type "invalid_type"})
