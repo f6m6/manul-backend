@@ -246,6 +246,21 @@
         (is (some #(re-find #"delete from singing_lesson_songs" (:sql %)) @calls))
         (is (some #(re-find #"insert into singing_lesson_songs" (:sql %)) @calls))))))
 
+(deftest update-singing-lesson-returns-404-when-missing
+  (with-redefs [with-transaction (fn [f] (f))
+                korma/exec-raw (fn [& args]
+                                 (let [[sql] (if (vector? (first args))
+                                               (first args)
+                                               (second args))]
+                                   (if (re-find #"update singing_lessons" sql)
+                                     []
+                                     :ok)))]
+    (let [body (json/write-str {:date "2026-02-01" :songs ["Song A"]})
+          response (update-singing-lesson "999" (-> (mock/request :put "/singing-lessons/999" body)
+                                                   (mock/content-type "application/json")))]
+      (is (= 404 (:status response)))
+      (is (re-find #"singing lesson not found" (:body response))))))
+
 (deftest delete-singing-lesson-removes-row
   (with-redefs [with-transaction (fn [f] (f))
                 korma/exec-raw (fn [& args]
