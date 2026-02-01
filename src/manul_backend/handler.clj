@@ -248,7 +248,7 @@
   "List practice sessions with nested songs"
   []
   (let [rows (exec-raw
-              ["select ps.id, ps.practiced_on, ps.total_minutes,\n                      pss.position, pss.song_id, pss.song_title, pss.minutes, s.length\n               from practice_sessions ps\n               left join practice_session_songs pss on pss.practice_session_id = ps.id\n               left join songs s on s.id = pss.song_id or s.title = pss.song_title\n               order by ps.practiced_on desc, ps.id desc, pss.position asc"]
+              ["select ps.id, ps.practiced_on, ps.total_minutes,\n                      pss.position, pss.song_id, pss.song_title, pss.minutes, s.length\n               from practice_sessions ps\n               left join practice_session_songs pss on pss.practice_session_id = ps.id\n               left join songs s on s.title = pss.song_id\n               order by ps.practiced_on desc, ps.id desc, pss.position asc"]
               :results)
         grouped (->> rows
                      (group-by :id)
@@ -301,10 +301,10 @@
                from albums a
                join album_songs asg on asg.album_id = a.id
                join songs s on s.title = asg.song_title
-               left join view_song_last_performed_live vpl on vpl.song_id = s.id
-               left join view_song_perform_live_counts vpc on vpc.song_id = s.id
-               left join view_song_last_practiced vpr on vpr.song_id = s.id
-               left join view_song_practice_counts vpp on vpp.song_id = s.id
+               left join view_song_last_performed_live vpl on vpl.song_id = s.title
+               left join view_song_perform_live_counts vpc on vpc.song_id = s.title
+               left join view_song_last_practiced vpr on vpr.song_id = s.title
+               left join view_song_practice_counts vpp on vpp.song_id = s.title
                where a.id = ?
                order by asg.track_number asc"
                [(Integer/parseInt album-id)]]
@@ -497,7 +497,7 @@
                session-id (normalize-id rows)]
            (doseq [[idx song] (map-indexed vector valid)]
              (exec-raw
-              ["insert into practice_session_songs (practice_session_id, song_id, song_title, position, minutes) values (?, (select id from songs where title = ?), ?, ?, ?)"
+              ["insert into practice_session_songs (practice_session_id, song_id, song_title, position, minutes) values (?, ?, ?, ?, ?)"
                [session-id (:title song) (:title song) (inc idx) (:minutes song)]]))
            (json-response {:practiceSessionId session-id
                            :songs (count valid)})))))))
@@ -559,7 +559,7 @@
                    [(Integer/parseInt id)]])
                  (doseq [[idx song] (map-indexed vector valid)]
                    (exec-raw
-                    ["insert into practice_session_songs (practice_session_id, song_id, song_title, position, minutes) values (?, (select id from songs where title = ?), ?, ?, ?)"
+                    ["insert into practice_session_songs (practice_session_id, song_id, song_title, position, minutes) values (?, ?, ?, ?, ?)"
                      [(Integer/parseInt id) (:title song) (:title song) (inc idx) (:minutes song)]]))
                 (json-response {:id (:id row)
                                 :practiced_on (str (:practiced_on row))
