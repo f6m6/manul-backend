@@ -118,7 +118,7 @@
   "List all songs in the system"
   []
   (let [rows (exec-raw
-              ["select distinct on (s.title)\n                      s.*, a.id as album_id, a.title as album_title\n               from songs s\n               left join album_songs asg on asg.song_title = s.title\n               left join albums a on a.id = asg.album_id\n               order by s.title, a.id"]
+              ["select distinct on (s.title)\n                      s.*, a.id as album_id, a.title as album_title, asg.track_number\n               from songs s\n               left join album_songs asg on asg.song_title = s.title\n               left join albums a on a.id = asg.album_id\n               order by s.title, a.id"]
               :results)]
     (->> rows
          (map (fn [row]
