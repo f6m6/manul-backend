@@ -215,6 +215,15 @@
         (is (some #(re-find #"insert into singing_lessons" (:sql %)) @calls))
         (is (some #(re-find #"insert into singing_lesson_songs" (:sql %)) @calls))))))
 
+(deftest create-singing-lesson-requires-songs
+  (with-redefs [with-transaction (fn [f] (f))
+                korma/exec-raw (fn [& _] :ok)]
+    (let [body (json/write-str {:date "2026-02-01" :songs []})
+          response (create-singing-lesson (-> (mock/request :post "/singing-lessons" body)
+                                              (mock/content-type "application/json")))]
+      (is (= 400 (:status response)))
+      (is (re-find #"songs are required" (:body response))))))
+
 (deftest update-singing-lesson-upserts-songs
   (let [calls (atom [])]
     (with-redefs [with-transaction (fn [f] (f))
