@@ -168,8 +168,8 @@
 (defn venue-performances-with-setlists
   "List performances for a venue with nested setlists"
   [venuename]
-  (let [name (when venuename (s/trim venuename))]
-    (if (s/blank? name)
+  (let [venue-name (when venuename (s/trim venuename))]
+    (if (s/blank? venue-name)
       (-> (json-response {:error "venuename is required"})
           (resp/status 400))
       (let [rows (exec-raw
@@ -179,7 +179,7 @@
                     left join song_performances sp on sp.performance_id = p.id
                     where p.venue = ?
                     order by p.performancedate desc, p.id desc, sp.setlistposition asc"
-                   [name]]
+                   [venue-name]]
                   :results)
             grouped (->> rows
                          (group-by :id)
