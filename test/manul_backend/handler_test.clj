@@ -114,6 +114,13 @@
       (is (= 400 (:status response)))
       (is (re-find #"gig_type is invalid" (:body response))))))
 
+(deftest update-performance-requires-venue-and-date
+  (let [body (json/write-str {:venue "   " :date "" :gig_type "open_mic"})
+        response (update-performance "42" (-> (mock/request :put "/performances/42" body)
+                                             (mock/content-type "application/json")))]
+    (is (= 400 (:status response)))
+    (is (re-find #"venue and date are required" (:body response)))))
+
 (deftest create-venue-requires-name
   (let [response (app (-> (mock/request :post "/create-venue" "{}")
                           (mock/content-type "application/json")))]
