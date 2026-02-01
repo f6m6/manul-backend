@@ -464,6 +464,11 @@
   (is (nil? (normalize-length-interval "")))
   (is (nil? (normalize-length-interval "   "))))
 
+(deftest normalize-fee-micro-gbp-parses-strings
+  (is (= 1200000 (normalize-fee-micro-gbp "1200000")))
+  (is (= 1200000 (normalize-fee-micro-gbp 1200000)))
+  (is (nil? (normalize-fee-micro-gbp ""))))
+
 (deftest create-song-inserts-album-association
   (let [calls (atom [])]
     (with-redefs [with-transaction (fn [f] (f))
