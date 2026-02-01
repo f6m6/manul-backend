@@ -262,8 +262,8 @@
   [album-id]
   (let [rows (exec-raw
               ["select a.id, a.title as album_title, a.artist, a.release_date,
-                      s.title as song_title, s.length, s.active, s.cover, s.instrumental, s.key,
-                      s.original_key, s.my_key, s.capo, s.bpm,
+                      s.title as song_title, s.length, s.active, s.cover, s.instrumental,
+                      s.recorded_key, s.my_live_key, s.capo, s.bpm,
                       vpl.last_performed_live, vpc.live_count,
                       vpr.last_practiced, vpp.practice_count,
                       asg.track_number
@@ -289,9 +289,8 @@
                            :active (:active row)
                            :cover (:cover row)
                            :instrumental (:instrumental row)
-                           :key (:key row)
-                           :original_key (:original_key row)
-                           :my_key (:my_key row)
+                           :recorded_key (:recorded_key row)
+                           :my_live_key (:my_live_key row)
                            :capo (:capo row)
                            :bpm (:bpm row)
                            :last_performed_live (when-let [d (:last_performed_live row)] (str d))
@@ -583,7 +582,7 @@
 (defn create-song
   "Create a song"
   [request]
-  (let [{:keys [title cover active key length instrumental artist bpm original_key my_key capo album_id]} (json-read request)
+  (let [{:keys [title cover active length instrumental artist bpm recorded_key my_live_key capo album_id]} (json-read request)
         active-val (if (some? active) active true)
         cover-val (if (some? cover) cover false)
         instrumental-val (if (some? instrumental) instrumental false)
@@ -600,8 +599,8 @@
         (with-transaction
          (fn []
            (exec-raw
-            ["insert into songs (title, cover, active, key, length, instrumental, artist, bpm, original_key, my_key, capo) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-             [song-title cover-val active-val key length instrumental-val artist bpm-val original_key my_key capo-val]])
+           ["insert into songs (title, cover, active, key, length, instrumental, artist, bpm, recorded_key, my_live_key, capo) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            [song-title cover-val active-val recorded_key length instrumental-val artist bpm-val recorded_key my_live_key capo-val]])
            (when album-id
              (exec-raw
               ["insert into album_songs (album_id, song_title) values (?, ?)"
@@ -611,7 +610,7 @@
 (defn update-song
   "Update song fields"
   [title request]
-  (let [{:keys [cover active key length instrumental artist bpm original_key my_key capo album_id]} (json-read request)
+  (let [{:keys [cover active length instrumental artist bpm recorded_key my_live_key capo album_id]} (json-read request)
         song-title (when title (s/trim title))
         active-val (if (some? active) active true)
         cover-val (if (some? cover) cover false)
@@ -629,8 +628,8 @@
       (with-transaction
        (fn []
          (let [rows (exec-raw
-                     ["update songs set cover = ?, active = ?, key = ?, length = ?, instrumental = ?, artist = ?, bpm = ?, original_key = ?, my_key = ?, capo = ? where title = ? returning title, cover, active, key, length, instrumental, artist, bpm, original_key, my_key, capo"
-                      [cover-val active-val key length-val instrumental-val artist bpm-val original_key my_key capo-val song-title]]
+                     ["update songs set cover = ?, active = ?, key = ?, length = ?, instrumental = ?, artist = ?, bpm = ?, recorded_key = ?, my_live_key = ?, capo = ? where title = ? returning title, cover, active, key, length, instrumental, artist, bpm, recorded_key, my_live_key, capo"
+                      [cover-val active-val recorded_key length-val instrumental-val artist bpm-val recorded_key my_live_key capo-val song-title]]
                      :results)
                row (first rows)]
            (if (nil? row)
@@ -652,8 +651,8 @@
                                :instrumental (:instrumental row)
                                :artist (:artist row)
                                :bpm (:bpm row)
-                               :original_key (:original_key row)
-                               :my_key (:my_key row)
+                               :recorded_key (:recorded_key row)
+                               :my_live_key (:my_live_key row)
                                :capo (:capo row)})))))))))
 
 (defn delete-song
