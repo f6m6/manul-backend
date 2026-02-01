@@ -69,6 +69,8 @@
 (defentity sessions)
 (defentity view_song_lengths_by_date)
 (defentity view_next_songs_to_play)
+(defentity view_next_songs_to_perform_live)
+(defentity view_next_songs_to_practise)
 (defentity session_types)
 (defentity songs)
 (defentity view_song_plays)
@@ -77,6 +79,8 @@
 (defentity song_performance_dates)
 (defentity albums)
 (defentity album_songs)
+(defentity practice_sessions)
+(defentity practice_session_songs)
 
 (def gig-types #{"practice" "open_mic" "busking" "booked" "gig"})
 
@@ -154,6 +158,31 @@
                                :gig_type (name (:gig_type base))
                                :setlist setlist})))
                      (sort-by :performancedate #(compare %2 %1))
+                     vec)]
+    (json-response grouped)))
+
+(defn practice-sessions-with-songs
+  "List practice sessions with nested songs"
+  []
+  (let [rows (exec-raw
+              ["select ps.id, ps.practiced_on, ps.total_minutes,\n                      pss.position, pss.song_title, pss.minutes\n+               from practice_sessions ps\n+               left join practice_session_songs pss on pss.practice_session_id = ps.id\n+               order by ps.practiced_on desc, ps.id desc, pss.position asc"]
+              :results)
+        grouped (->> rows
+                     (group-by :id)
+                     (map (fn [[id items]]
+                            (let [base (first items)
+                                  songs (->> items
+                                             (filter :song_title)
+                                             (map (fn [row]
+                                                    {:position (:position row)
+                                                     :title (:song_title row)
+                                                     :minutes (:minutes row)}))
+                                             vec)]
+                              {:id id
+                               :practiced_on (str (:practiced_on base))
+                               :total_minutes (:total_minutes base)
+                               :songs songs})))
+                     (sort-by :practiced_on #(compare %2 %1))
                      vec)]
     (json-response grouped)))
 
@@ -286,11 +315,19 @@
   []
   (str (visualiser) "<br /><br />" (next-active-songs)))
 
-(defn next-songs-to-play
-  "Return a JSON array with songs, play count and time since last play"
+(defn next-songs-to-perform-live
+  "Return a JSON array with songs, live performance count and time since last performance"
   []
-  (->> (select view_next_songs_to_play)
+  (->> (select view_next_songs_to_perform_live)
        (map (fn [row] (clojure.core/update row :last_played str)))
+       vec
+       json-response))
+
+(defn next-songs-to-practise
+  "Return a JSON array with songs, practice count and time since last practice"
+  []
+  (->> (select view_next_songs_to_practise)
+       (map (fn [row] (clojure.core/update row :last_practiced str)))
        vec
        json-response))
 
@@ -328,8 +365,60 @@
                (exec-raw
                 ["insert into song_performances (song_id, performance_id, setlistposition) values (?, ?, ?)"
                  [song performance-id (inc idx)]]))
-             (json-response {:performanceId performance-id
-                             :songs          (count songs-list)}))))))))
+           (json-response {:performanceId performance-id
+                           :songs          (count songs-list)}))))))))
+
+(defn create-practice-session
+  "Create a practice session and its practice_session_songs rows"
+  [request]
+  (let [{:keys [date total_minutes songs]} (json-read request)
+        session-date (if (and date (not (s/blank? date))) date (str (time/today)))
+        songs-list (if (vector? songs) songs [])
+        normalized (map (fn [entry]
+                          (cond
+                            (string? entry) {:title entry :minutes nil}
+                            (map? entry) {:title (:title entry) :minutes (:minutes entry)}
+                            :else nil))
+                        songs-list)
+        valid (filter (fn [row]
+                        (and row
+                             (string? (:title row))
+                             (not (s/blank? (:title row)))))
+                      normalized)]
+    (if (not (seq valid))
+      (-> (json-response {:error "songs are required"})
+          (resp/status 400))
+      (with-transaction
+       (fn []
+         (let [rows (exec-raw
+                     ["insert into practice_sessions (practiced_on, total_minutes) values (?, ?) returning id"
+                      [(java.sql.Date/valueOf session-date) total_minutes]]
+                     :results)
+               session-id (normalize-id rows)]
+           (doseq [[idx song] (map-indexed vector valid)]
+             (exec-raw
+              ["insert into practice_session_songs (practice_session_id, song_title, position, minutes) values (?, ?, ?, ?)"
+               [session-id (:title song) (inc idx) (:minutes song)]]))
+           (json-response {:practiceSessionId session-id
+                           :songs (count valid)})))))))
+
+(defn delete-practice-session
+  "Delete a practice session and its songs"
+  [id]
+  (with-transaction
+   (fn []
+     (exec-raw
+      ["delete from practice_session_songs where practice_session_id = ?"
+       [(Integer/parseInt id)]])
+     (let [rows (exec-raw
+                 ["delete from practice_sessions where id = ? returning id"
+                  [(Integer/parseInt id)]]
+                 :results)
+           row (first rows)]
+       (if (nil? row)
+         (-> (json-response {:error "practice session not found"})
+             (resp/status 404))
+         (json-response {:id (:id row)}))))))
 
 (defn update-performance
   "Update performance fields"
@@ -547,10 +636,15 @@
 (defroutes app-routes
   (GET "/" [] (root))
   (GET "/all-songs" [] (all-songs))
-  (GET "/next-songs-to-play" [] (next-songs-to-play))
+  (GET "/next-songs-to-play" [] (next-songs-to-perform-live))
+  (GET "/next-songs-to-perform-live" [] (next-songs-to-perform-live))
+  (GET "/next-songs-to-practise" [] (next-songs-to-practise))
   (GET "/next-active-songs" [] (next-active-songs))
   (GET "/performances" [] (all-performances))
   (GET "/performances-with-setlists" [] (performances-with-setlists))
+  (GET "/practice-sessions" [] (practice-sessions-with-songs))
+  (POST "/practice-sessions" request (create-practice-session request))
+  (DELETE "/practice-sessions/:id" [id] (delete-practice-session id))
   (POST "/performances" request (create-performance request))
   (PUT "/performances/:id" [id :as request] (update-performance id request))
   (PUT "/performances/:id/setlist" [id :as request] (replace-performance-setlist id request))
