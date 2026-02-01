@@ -168,6 +168,77 @@
       (is (re-find #"song_id" @captured))
       (is (not (re-find #"\\+\\s*left join" @captured))))))
 
+(deftest singing-lessons-with-songs-returns-rows
+  (with-redefs [korma/exec-raw (fn [& _]
+                                 [{:id 1
+                                   :lesson_date "2026-02-01"
+                                   :duration_minutes 120
+                                   :position 1
+                                   :song_title "Song A"}
+                                  {:id 1
+                                   :lesson_date "2026-02-01"
+                                   :duration_minutes 120
+                                   :position 2
+                                   :song_title "Song B"}])]
+    (let [response (singing-lessons-with-songs)
+          body (json/read-str (:body response) :key-fn keyword)]
+      (is (= 1 (count body)))
+      (is (= 2 (count (:songs (first body))))))))
+
+(deftest create-singing-lesson-inserts-songs
+  (let [calls (atom [])]
+    (with-redefs [with-transaction (fn [f] (f))
+                  korma/exec-raw (fn [& args]
+                                   (let [[sql params] (if (vector? (first args))
+                                                       (first args)
+                                                       (second args))]
+                                     (swap! calls conj {:sql sql :params params})
+                                     (if (re-find #"returning id" sql)
+                                       [{:id 7}]
+                                       :ok)))]
+      (let [body (json/write-str {:date "2026-02-01" :songs ["Song A"]})
+            response (create-singing-lesson (-> (mock/request :post "/singing-lessons" body)
+                                                (mock/content-type "application/json")))]
+        (is (= 200 (:status response)))
+        (is (some #(re-find #"insert into singing_lessons" (:sql %)) @calls))
+        (is (some #(re-find #"insert into singing_lesson_songs" (:sql %)) @calls))))))
+
+(deftest update-singing-lesson-upserts-songs
+  (let [calls (atom [])]
+    (with-redefs [with-transaction (fn [f] (f))
+                  korma/exec-raw (fn [& args]
+                                   (let [[sql params] (if (vector? (first args))
+                                                       (first args)
+                                                       (second args))]
+                                     (swap! calls conj {:sql sql :params params})
+                                     (if (re-find #"update singing_lessons" sql)
+                                       [{:id 42
+                                         :lesson_date "2026-02-01"
+                                         :duration_minutes 120}]
+                                       :ok)))]
+      (let [body (json/write-str {:date "2026-02-01" :songs ["Song A" "Song B"]})
+            response (update-singing-lesson "42" (-> (mock/request :put "/singing-lessons/42" body)
+                                                     (mock/content-type "application/json")))
+            response-body (json/read-str (:body response) :key-fn keyword)]
+        (is (= 200 (:status response)))
+        (is (= 42 (:id response-body)))
+        (is (some #(re-find #"delete from singing_lesson_songs" (:sql %)) @calls))
+        (is (some #(re-find #"insert into singing_lesson_songs" (:sql %)) @calls))))))
+
+(deftest delete-singing-lesson-removes-row
+  (with-redefs [with-transaction (fn [f] (f))
+                korma/exec-raw (fn [& args]
+                                 (let [[sql params] (if (vector? (first args))
+                                                     (first args)
+                                                     (second args))]
+                                   (if (re-find #"delete from singing_lessons" sql)
+                                     [{:id 9}]
+                                     :ok)))]
+    (let [response (delete-singing-lesson "9")
+          body (json/read-str (:body response) :key-fn keyword)]
+      (is (= 200 (:status response)))
+      (is (= 9 (:id body))))))
+
 (deftest create-practice-session-inserts-song-id
   (let [calls (atom [])]
     (with-redefs [with-transaction (fn [f] (f))

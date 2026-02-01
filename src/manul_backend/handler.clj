@@ -83,6 +83,8 @@
 (defentity album_songs)
 (defentity practice_sessions)
 (defentity practice_session_songs)
+(defentity singing_lessons)
+(defentity singing_lesson_songs)
 (defentity view_song_last_performed_live)
 (defentity view_song_perform_live_counts)
 (defentity view_song_last_practiced)
@@ -272,6 +274,108 @@
                      (sort-by :practiced_on #(compare %2 %1))
                      vec)]
     (json-response grouped)))
+
+(defn singing-lessons-with-songs
+  "List singing lessons with nested songs"
+  []
+  (let [rows (exec-raw
+              ["select sl.id, sl.lesson_date, sl.duration_minutes,\n               sls.position, sls.song_title\n               from singing_lessons sl\n               left join singing_lesson_songs sls on sls.singing_lesson_id = sl.id\n               order by sl.lesson_date desc, sl.id desc, sls.position asc"]
+              :results)
+        grouped (->> rows
+                     (group-by :id)
+                     (map (fn [[id items]]
+                            (let [base (first items)
+                                  songs (->> items
+                                             (filter :song_title)
+                                             (map (fn [row]
+                                                    {:position (:position row)
+                                                     :title (:song_title row)}))
+                                             vec)]
+                              {:id id
+                               :lesson_date (str (:lesson_date base))
+                               :duration_minutes (:duration_minutes base)
+                               :songs songs})))
+                     (sort-by :lesson_date #(compare %2 %1))
+                     vec)]
+    (json-response grouped)))
+
+(defn create-singing-lesson
+  "Create a singing lesson and its songs"
+  [request]
+  (let [{:keys [date songs]} (json-read request)
+        lesson-date (if (and date (not (s/blank? date))) date (str (time/today)))
+        songs-list (if (vector? songs) songs [])]
+    (if (or (not (seq songs-list))
+            (not (every? (fn [song] (and (string? song) (not (s/blank? song)))) songs-list)))
+      (-> (json-response {:error "songs are required"})
+          (resp/status 400))
+      (with-transaction
+       (fn []
+         (let [rows (exec-raw
+                     ["insert into singing_lessons (lesson_date, duration_minutes) values (?, 120) returning id"
+                      [(java.sql.Date/valueOf lesson-date)]]
+                     :results)
+               lesson-id (normalize-id rows)]
+           (doseq [[idx song] (map-indexed vector songs-list)]
+             (exec-raw
+              ["insert into singing_lesson_songs (singing_lesson_id, song_title, position) values (?, ?, ?)"
+               [lesson-id song (inc idx)]]))
+           (json-response {:singingLessonId lesson-id
+                           :songs (count songs-list)})))))))
+
+(defn delete-singing-lesson
+  "Delete a singing lesson and its songs"
+  [id]
+  (with-transaction
+   (fn []
+     (exec-raw
+      ["delete from singing_lesson_songs where singing_lesson_id = ?"
+       [(Integer/parseInt id)]])
+     (let [rows (exec-raw
+                 ["delete from singing_lessons where id = ? returning id"
+                  [(Integer/parseInt id)]]
+                 :results)
+           row (first rows)]
+       (if (nil? row)
+         (-> (json-response {:error "singing lesson not found"})
+             (resp/status 404))
+        (json-response {:id (:id row)}))))))
+
+(defn update-singing-lesson
+  "Update a singing lesson and its songs"
+  [id request]
+  (let [{:keys [date songs]} (json-read request)
+        lesson-date (if (and date (not (s/blank? date))) date nil)
+        songs-list (if (vector? songs) songs [])]
+    (if (or (s/blank? id) (nil? lesson-date))
+      (-> (json-response {:error "date is required"})
+          (resp/status 400))
+      (if (or (not (seq songs-list))
+              (not (every? (fn [song] (and (string? song) (not (s/blank? song)))) songs-list)))
+        (-> (json-response {:error "songs are required"})
+            (resp/status 400))
+        (with-transaction
+         (fn []
+           (let [rows (exec-raw
+                       ["update singing_lessons set lesson_date = ?, duration_minutes = 120 where id = ? returning id, lesson_date, duration_minutes"
+                        [(java.sql.Date/valueOf lesson-date) (Integer/parseInt id)]]
+                       :results)
+                 row (first rows)]
+             (if (nil? row)
+               (-> (json-response {:error "singing lesson not found"})
+                   (resp/status 404))
+               (do
+                 (exec-raw
+                  ["delete from singing_lesson_songs where singing_lesson_id = ?"
+                   [(Integer/parseInt id)]])
+                 (doseq [[idx song] (map-indexed vector songs-list)]
+                   (exec-raw
+                    ["insert into singing_lesson_songs (singing_lesson_id, song_title, position) values (?, ?, ?)"
+                     [(Integer/parseInt id) song (inc idx)]]))
+                 (json-response {:id (:id row)
+                                 :lesson_date (str (:lesson_date row))
+                                 :duration_minutes (:duration_minutes row)
+                                 :songs (count songs-list)}))))))))))
 
 (defn all-venues
   "List all venues"
@@ -840,6 +944,10 @@
   (POST "/practice-sessions" request (create-practice-session request))
   (PUT "/practice-sessions/:id" [id :as request] (update-practice-session id request))
   (DELETE "/practice-sessions/:id" [id] (delete-practice-session id))
+  (GET "/singing-lessons" [] (singing-lessons-with-songs))
+  (POST "/singing-lessons" request (create-singing-lesson request))
+  (PUT "/singing-lessons/:id" [id :as request] (update-singing-lesson id request))
+  (DELETE "/singing-lessons/:id" [id] (delete-singing-lesson id))
   (POST "/performances" request (create-performance request))
   (PUT "/performances/:id" [id :as request] (update-performance id request))
   (PUT "/performances/:id/setlist" [id :as request] (replace-performance-setlist id request))
