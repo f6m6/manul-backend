@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS singing_lessons (
 
 CREATE TABLE IF NOT EXISTS singing_lesson_songs (
   singing_lesson_id integer NOT NULL REFERENCES singing_lessons(id) ON DELETE CASCADE,
-  song_title character varying(50) NOT NULL REFERENCES songs(title) ON DELETE CASCADE,
+  song_title character varying(50) NOT NULL REFERENCES songs(title) ON DELETE CASCADE ON UPDATE CASCADE,
   position integer NOT NULL,
   PRIMARY KEY (singing_lesson_id, song_title)
 );
