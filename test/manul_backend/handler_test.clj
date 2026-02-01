@@ -295,6 +295,15 @@
           (is (re-find #"song_id" (:sql insert)))
           (is (= [7 "Song A" "Song A" 1 nil] (:params insert))))))))
 
+(deftest create-practice-session-requires-songs
+  (with-redefs [with-transaction (fn [f] (f))
+                korma/exec-raw (fn [& _] :ok)]
+    (let [body (json/write-str {:date "2026-02-01" :songs []})
+          response (create-practice-session (-> (mock/request :post "/practice-sessions" body)
+                                                (mock/content-type "application/json")))]
+      (is (= 400 (:status response)))
+      (is (re-find #"songs are required" (:body response))))))
+
 (deftest create-song-trims-and-inserts-defaults
   (let [inserted (atom nil)]
     (with-redefs [with-transaction (fn [f] (f))
