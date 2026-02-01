@@ -320,7 +320,7 @@
         (with-transaction
          (fn []
            (let [rows (exec-raw
-                       ["insert into performances (performancedate, venue, free, openmic, gig_type) values (?, ?, ?, ?, ?) returning id"
+                       ["insert into performances (performancedate, venue, free, openmic, gig_type) values (?, ?, ?, ?, ?::gig_type) returning id"
                         [(java.sql.Date/valueOf performance-date) trimmed-venue free-val openmic-val gig-type-val]]
                        :results)
                  performance-id (normalize-id rows)]
@@ -352,7 +352,7 @@
         (-> (json-response {:error "gig_type is invalid"})
             (resp/status 400))
         (let [rows (exec-raw
-                    ["update performances set performancedate = ?, venue = ?, free = ?, openmic = ?, gig_type = ? where id = ? returning id, performancedate, venue, free, openmic, gig_type"
+                    ["update performances set performancedate = ?, venue = ?, free = ?, openmic = ?, gig_type = ?::gig_type where id = ? returning id, performancedate, venue, free, openmic, gig_type"
                      [(java.sql.Date/valueOf performance-date) trimmed-venue free-val openmic-val gig-type-val (Integer/parseInt id)]]
                     :results)
               row (first rows)]
