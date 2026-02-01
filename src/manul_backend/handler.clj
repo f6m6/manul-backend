@@ -669,7 +669,8 @@
         album-id (when (and (some? album_id) (not (s/blank? (str album_id))))
                    (Integer/parseInt (str album_id)))
         track-num (when (and (some? track_number) (not (s/blank? (str track_number))))
-                    (Integer/parseInt (str track_number)))]
+                    (Integer/parseInt (str track_number)))
+        length-val (if (and length (s/blank? (str length))) nil length)]
     (let [song-title (when title (s/trim title))]
       (if (s/blank? song-title)
         (-> (json-response {:error "title is required"})
@@ -677,8 +678,8 @@
         (with-transaction
          (fn []
            (exec-raw
-           ["insert into songs (title, cover, active, key, length, instrumental, artist, bpm, recorded_key, my_live_key, capo) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-            [song-title cover-val active-val recorded_key length instrumental-val artist bpm-val recorded_key my_live_key capo-val]])
+           ["insert into songs (title, cover, active, key, length, instrumental, artist, bpm, recorded_key, my_live_key, capo) values (?, ?, ?, ?, ?::interval, ?, ?, ?, ?, ?, ?)"
+            [song-title cover-val active-val recorded_key length-val instrumental-val artist bpm-val recorded_key my_live_key capo-val]])
            (when album-id
              (exec-raw
               ["insert into album_songs (album_id, song_title, track_number) values (?, ?, ?)"
@@ -708,7 +709,7 @@
       (with-transaction
        (fn []
          (let [rows (exec-raw
-                     ["update songs set cover = ?, active = ?, key = ?, length = ?, instrumental = ?, artist = ?, bpm = ?, recorded_key = ?, my_live_key = ?, capo = ? where title = ? returning title, cover, active, key, length, instrumental, artist, bpm, recorded_key, my_live_key, capo"
+                     ["update songs set cover = ?, active = ?, key = ?, length = ?::interval, instrumental = ?, artist = ?, bpm = ?, recorded_key = ?, my_live_key = ?, capo = ? where title = ? returning title, cover, active, key, length, instrumental, artist, bpm, recorded_key, my_live_key, capo"
                       [cover-val active-val recorded_key length-val instrumental-val artist bpm-val recorded_key my_live_key capo-val song-title]]
                      :results)
                row (first rows)]

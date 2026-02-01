@@ -206,6 +206,22 @@
         (is (= ["Song A" false true nil nil false nil nil nil nil nil] (:params @inserted)))
         (is (= "Song A" (:title response-body)))))))
 
+(deftest create-song-casts-length-to-interval
+  (let [inserted (atom nil)]
+    (with-redefs [with-transaction (fn [f] (f))
+                  korma/exec-raw (fn [& args]
+                                   (let [[sql params] (if (vector? (first args))
+                                                       (first args)
+                                                       (second args))]
+                                     (reset! inserted {:sql sql :params params})
+                                     :ok))]
+      (let [body (json/write-str {:title "Song A" :length "02:52"})
+            response (create-song (-> (mock/request :post "/create-song" body)
+                                      (mock/content-type "application/json")))]
+        (is (= 200 (:status response)))
+        (is (re-find #"\\?::interval" (:sql @inserted)))
+        (is (= "02:52" (nth (:params @inserted) 4)))))))
+
 (deftest create-song-inserts-album-association
   (let [calls (atom [])]
     (with-redefs [with-transaction (fn [f] (f))
@@ -262,6 +278,23 @@
         (is (some #(and (re-find #"insert into album_songs" (:sql %))
                         (= [3 "Song A" 8] (:params %)))
                   @calls))))))
+
+(deftest update-song-casts-length-to-interval
+  (let [calls (atom [])]
+    (with-redefs [with-transaction (fn [f] (f))
+                  korma/exec-raw (fn [& args]
+                                   (let [[sql params] (if (vector? (first args))
+                                                       (first args)
+                                                       (second args))]
+                                     (swap! calls conj {:sql sql :params params})
+                                     [{:title "Song A"}]))]
+      (let [body (json/write-str {:length "02:52"})
+            response (update-song "Song A" (-> (mock/request :put "/songs/Song%20A" body)
+                                               (mock/content-type "application/json")))]
+        (is (= 200 (:status response)))
+        (let [update (first @calls)]
+          (is (re-find #"\\?::interval" (:sql update)))
+          (is (= "02:52" (nth (:params update) 3))))))))
 
 (deftest update-venue-updates-postcode
   (with-redefs [korma/exec-raw (fn [& _] [{:venuename "The Place" :postcode "AB12"}])]
