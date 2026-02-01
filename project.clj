@@ -15,7 +15,8 @@
   :plugins [[lein-ring "0.12.5"]]
   :ring {:handler manul-backend.handler/app
          :auto-reload? true
-         :auto-refresh? true}
+         :auto-refresh? true
+         :reload-paths ["src"]}
   :profiles
   {:dev {:dependencies [[javax.servlet/servlet-api "2.5"]
                         [ring/ring-mock "0.3.0"]]}})

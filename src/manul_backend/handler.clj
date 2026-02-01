@@ -136,6 +136,42 @@
        vec
        json-response))
 
+(defn update-venue
+  "Update venue postcode"
+  [venuename request]
+  (let [{:keys [postcode]} (json-read request)
+        name (when venuename (s/trim venuename))]
+    (if (s/blank? name)
+      (-> (json-response {:error "venuename is required"})
+          (resp/status 400))
+      (let [rows (exec-raw
+                  ["update venues set postcode = ? where venuename = ? returning venuename, postcode"
+                   [postcode name]]
+                  :results)
+            row (first rows)]
+        (if (nil? row)
+          (-> (json-response {:error "venue not found"})
+              (resp/status 404))
+          (json-response {:venuename (:venuename row)
+                          :postcode (:postcode row)}))))))
+
+(defn delete-venue
+  "Delete a venue"
+  [venuename]
+  (let [name (when venuename (s/trim venuename))]
+    (if (s/blank? name)
+      (-> (json-response {:error "venuename is required"})
+          (resp/status 400))
+      (let [rows (exec-raw
+                  ["delete from venues where venuename = ? returning venuename"
+                   [name]]
+                  :results)
+            row (first rows)]
+        (if (nil? row)
+          (-> (json-response {:error "venue not found"})
+              (resp/status 404))
+          (json-response {:venuename (:venuename row)}))))))
+
 (defn view-song-plays
   "Return song play counts (from view)"
   []
@@ -215,6 +251,70 @@
            (json-response {:performanceId performance-id
                            :songs          (count songs-list)})))))))
 
+(defn update-performance
+  "Update performance fields"
+  [id request]
+  (let [{:keys [venue date free openmic]} (json-read request)
+        trimmed-venue (when venue (s/trim venue))
+        performance-date (if (and date (not (s/blank? date))) date nil)
+        free-val (if (some? free) free true)
+        openmic-val (if (some? openmic) openmic true)]
+    (if (or (s/blank? trimmed-venue) (s/blank? performance-date))
+      (-> (json-response {:error "venue and date are required"})
+          (resp/status 400))
+      (let [rows (exec-raw
+                  ["update performances set performancedate = ?, venue = ?, free = ?, openmic = ? where id = ? returning id, performancedate, venue, free, openmic"
+                   [(java.sql.Date/valueOf performance-date) trimmed-venue free-val openmic-val (Integer/parseInt id)]]
+                  :results)
+            row (first rows)]
+        (if (nil? row)
+          (-> (json-response {:error "performance not found"})
+              (resp/status 404))
+          (json-response {:id (:id row)
+                          :performancedate (str (:performancedate row))
+                          :venue (:venue row)
+                          :free (:free row)
+                          :openmic (:openmic row)}))))))
+
+(defn replace-performance-setlist
+  "Replace setlist for a performance"
+  [id request]
+  (let [{:keys [songs]} (json-read request)
+        songs-list (if (vector? songs) songs [])]
+    (if (or (not (seq songs-list))
+            (not (every? (fn [song] (and (string? song) (not (s/blank? song)))) songs-list)))
+      (-> (json-response {:error "songs must be a non-empty list of titles"})
+          (resp/status 400))
+      (with-transaction
+       (fn []
+         (exec-raw
+          ["delete from song_performances where performance_id = ?"
+           [(Integer/parseInt id)]])
+         (doseq [[idx song] (map-indexed vector songs-list)]
+           (exec-raw
+            ["insert into song_performances (song_id, performance_id, setlistposition) values (?, ?, ?)"
+             [song (Integer/parseInt id) (inc idx)]]))
+         (json-response {:performanceId (Integer/parseInt id)
+                         :songs (count songs-list)}))))))
+
+(defn delete-performance
+  "Delete a performance and its setlist"
+  [id]
+  (with-transaction
+   (fn []
+     (exec-raw
+      ["delete from song_performances where performance_id = ?"
+       [(Integer/parseInt id)]])
+     (let [rows (exec-raw
+                 ["delete from performances where id = ? returning id"
+                  [(Integer/parseInt id)]]
+                 :results)
+           row (first rows)]
+       (if (nil? row)
+         (-> (json-response {:error "performance not found"})
+             (resp/status 404))
+         (json-response {:id (:id row)}))))))
+
 (defn create-venue
   "Create a venue"
   [request]
@@ -245,6 +345,50 @@
            ["insert into songs (title, cover, active, key, length, instrumental) values (?, ?, ?, ?, ?, ?)"
             [song-title cover-val active-val key length instrumental-val]])
           (json-response {:title song-title}))))))
+
+(defn update-song
+  "Update song fields"
+  [title request]
+  (let [{:keys [cover active key length instrumental]} (json-read request)
+        song-title (when title (s/trim title))
+        active-val (if (some? active) active true)
+        cover-val (if (some? cover) cover false)
+        instrumental-val (if (some? instrumental) instrumental false)
+        length-val (if (and length (s/blank? (str length))) nil length)]
+    (if (s/blank? song-title)
+      (-> (json-response {:error "title is required"})
+          (resp/status 400))
+      (let [rows (exec-raw
+                  ["update songs set cover = ?, active = ?, key = ?, length = ?, instrumental = ? where title = ? returning title, cover, active, key, length, instrumental"
+                   [cover-val active-val key length-val instrumental-val song-title]]
+                  :results)
+            row (first rows)]
+        (if (nil? row)
+          (-> (json-response {:error "song not found"})
+              (resp/status 404))
+          (json-response {:title (:title row)
+                          :cover (:cover row)
+                          :active (:active row)
+                          :key (:key row)
+                          :length (when-let [l (:length row)] (str l))
+                          :instrumental (:instrumental row)}))))))
+
+(defn delete-song
+  "Delete a song"
+  [title]
+  (let [song-title (when title (s/trim title))]
+    (if (s/blank? song-title)
+      (-> (json-response {:error "title is required"})
+          (resp/status 400))
+      (let [rows (exec-raw
+                  ["delete from songs where title = ? returning title"
+                   [song-title]]
+                  :results)
+            row (first rows)]
+        (if (nil? row)
+          (-> (json-response {:error "song not found"})
+              (resp/status 404))
+          (json-response {:title (:title row)}))))))
 
 (defn last-gig-date
   "Return a JSON { lastGigDate } with date of last gig"
@@ -293,6 +437,10 @@
 
 (defn date-three-months-ago [] (time/minus (time/today) (time/months 3)))
 
+(declare update-venue delete-venue
+         update-song delete-song
+         update-performance replace-performance-setlist delete-performance)
+
 (defroutes app-routes
   (GET "/" [] (root))
   (GET "/all-songs" [] (all-songs))
@@ -300,7 +448,13 @@
   (GET "/next-active-songs" [] (next-active-songs))
   (GET "/performances" [] (all-performances))
   (GET "/performances-with-setlists" [] (performances-with-setlists))
+  (POST "/performances" request (create-performance request))
+  (PUT "/performances/:id" [id :as request] (update-performance id request))
+  (PUT "/performances/:id/setlist" [id :as request] (replace-performance-setlist id request))
+  (DELETE "/performances/:id" [id] (delete-performance id))
   (GET "/venues" [] (all-venues))
+  (PUT "/venues/:venuename" [venuename :as request] (update-venue venuename request))
+  (DELETE "/venues/:venuename" [venuename] (delete-venue venuename))
   (GET "/view-song-plays" [] (view-song-plays))
   (GET "/view-song-plays-frequencies" [] (view-song-plays-frequencies))
   (GET "/song-performance-dates" [] (song-performance-dates))
@@ -310,6 +464,8 @@
   (POST "/create-performance" request (create-performance request))
   (POST "/create-venue" request (create-venue request))
   (POST "/create-song" request (create-song request))
+  (PUT "/songs/:title" [title :as request] (update-song title request))
+  (DELETE "/songs/:title" [title] (delete-song title))
   (GET "/session-types" [] (json-response (vec (map (fn [row] {:id   (str (:id row))
                                                                :name (:name row)})  (select session_types)))))
   (route/not-found "Not Found"))

@@ -112,3 +112,42 @@
         (is (re-find #"insert into songs" (:sql @inserted)))
         (is (= ["Song A" false true nil nil false] (:params @inserted)))
         (is (= "Song A" (:title response-body)))))))
+
+(deftest update-song-returns-404-when-missing
+  (with-redefs [korma/exec-raw (fn [& _] [])]
+    (let [body (json/write-str {:active false})
+          response (update-song "Missing" (-> (mock/request :put "/songs/Missing" body)
+                                              (mock/content-type "application/json")))]
+      (is (= 404 (:status response)))
+      (is (re-find #"song not found" (:body response))))))
+
+(deftest update-venue-updates-postcode
+  (with-redefs [korma/exec-raw (fn [& _] [{:venuename "The Place" :postcode "AB12"}])]
+    (let [body (json/write-str {:postcode "AB12"})
+          response (update-venue "The Place" (-> (mock/request :put "/venues/The%20Place" body)
+                                                 (mock/content-type "application/json")))
+          response-body (json/read-str (:body response) :key-fn keyword)]
+      (is (= 200 (:status response)))
+      (is (= "The Place" (:venuename response-body)))
+      (is (= "AB12" (:postcode response-body))))))
+
+(deftest replace-performance-setlist-validates-songs
+  (let [body (json/write-str {:songs ["Song A" ""]})
+        response (replace-performance-setlist "1" (-> (mock/request :put "/performances/1/setlist" body)
+                                                      (mock/content-type "application/json")))]
+    (is (= 400 (:status response)))
+    (is (re-find #"songs must be a non-empty list" (:body response)))))
+
+(deftest delete-performance-deletes-row
+  (with-redefs [with-transaction (fn [f] (f))
+                korma/exec-raw (fn [& args]
+                                 (let [[sql _] (if (vector? (first args))
+                                                (first args)
+                                                (second args))]
+                                   (if (re-find #"delete from performances" sql)
+                                     [{:id 9}]
+                                     :ok)))]
+    (let [response (delete-performance "9")
+          body (json/read-str (:body response) :key-fn keyword)]
+      (is (= 200 (:status response)))
+      (is (= 9 (:id body))))))
