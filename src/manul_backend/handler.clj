@@ -489,6 +489,51 @@
              (resp/status 404))
          (json-response {:id (:id row)}))))))
 
+(defn update-practice-session
+  "Update a practice session and its songs"
+  [id request]
+  (let [{:keys [date total_minutes songs]} (json-read request)
+        session-date (if (and date (not (s/blank? date))) date nil)
+        songs-list (if (vector? songs) songs [])
+        normalized (map (fn [entry]
+                          (cond
+                            (string? entry) {:title entry :minutes nil}
+                            (map? entry) {:title (:title entry) :minutes (:minutes entry)}
+                            :else nil))
+                        songs-list)
+        valid (filter (fn [row]
+                        (and row
+                             (string? (:title row))
+                             (not (s/blank? (:title row)))))
+                      normalized)]
+    (if (or (s/blank? id) (nil? session-date))
+      (-> (json-response {:error "date is required"})
+          (resp/status 400))
+      (if (not (seq valid))
+        (-> (json-response {:error "songs are required"})
+            (resp/status 400))
+        (with-transaction
+         (fn []
+           (let [rows (exec-raw
+                       ["update practice_sessions set practiced_on = ?, total_minutes = ? where id = ? returning id, practiced_on, total_minutes"
+                        [(java.sql.Date/valueOf session-date) total_minutes (Integer/parseInt id)]]
+                       :results)
+                 row (first rows)]
+             (if (nil? row)
+               (-> (json-response {:error "practice session not found"})
+                   (resp/status 404))
+               (do
+                 (exec-raw
+                  ["delete from practice_session_songs where practice_session_id = ?"
+                   [(Integer/parseInt id)]])
+                 (doseq [[idx song] (map-indexed vector valid)]
+                   (exec-raw
+                    ["insert into practice_session_songs (practice_session_id, song_title, position, minutes) values (?, ?, ?, ?)"
+                     [(Integer/parseInt id) (:title song) (inc idx) (:minutes song)]]))
+                (json-response {:id (:id row)
+                                :practiced_on (str (:practiced_on row))
+                                :total_minutes (:total_minutes row)
+                                :songs (count valid)}))))))))))
 (defn update-performance
   "Update performance fields"
   [id request]
@@ -736,6 +781,7 @@
        (venue-performances-with-setlists venuename))
   (GET "/practice-sessions" [] (practice-sessions-with-songs))
   (POST "/practice-sessions" request (create-practice-session request))
+  (PUT "/practice-sessions/:id" [id :as request] (update-practice-session id request))
   (DELETE "/practice-sessions/:id" [id] (delete-practice-session id))
   (POST "/performances" request (create-performance request))
   (PUT "/performances/:id" [id :as request] (update-performance id request))

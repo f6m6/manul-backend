@@ -235,3 +235,28 @@
           body (json/read-str (:body response) :key-fn keyword)]
       (is (= 200 (:status response)))
       (is (= 9 (:id body))))))
+
+(deftest update-practice-session-upserts-songs
+  (let [calls (atom [])]
+    (with-redefs [with-transaction (fn [f] (f))
+                  korma/exec-raw (fn [& args]
+                                   (let [[sql params with-results?] (if (vector? (first args))
+                                                                      [(first args) (second (first args)) (second args)]
+                                                                      [(second args) (second (second args)) (nth args 2 nil)])]
+                                     (swap! calls conj {:sql (first sql) :params params})
+                                     (cond
+                                       (re-find #"update practice_sessions" (first sql)) [{:id 42
+                                                                                           :practiced_on "2026-02-01"
+                                                                                           :total_minutes 30}]
+                                       :else :ok)))]
+      (let [body (json/write-str {:date "2026-02-01"
+                                  :total_minutes 30
+                                  :songs [{:title "Song A" :minutes 10}
+                                          {:title "Song B" :minutes 20}]})
+            response (update-practice-session "42" (-> (mock/request :put "/practice-sessions/42" body)
+                                                        (mock/content-type "application/json")))
+            response-body (json/read-str (:body response) :key-fn keyword)]
+        (is (= 200 (:status response)))
+        (is (= 42 (:id response-body)))
+        (is (some #(re-find #"delete from practice_session_songs" (:sql %)) @calls))
+        (is (some #(re-find #"insert into practice_session_songs" (:sql %)) @calls))))))
