@@ -315,6 +315,18 @@
       (is (= 2 (count body)))
       (is (= {:year 2023 :gigs 5 :estimated_minutes 120} (first body))))))
 
+(deftest live-gigs-by-year-query-has-no-plus
+  (let [captured (atom nil)]
+    (with-redefs [korma/exec-raw (fn [& args]
+                                   (let [[sql] (if (vector? (first args))
+                                                 (first args)
+                                                 (second args))]
+                                     (reset! captured sql)
+                                     []))]
+      (live-gigs-by-year)
+      (is (re-find #"from performances" @captured))
+      (is (not (re-find #"\\+\\s*left join" @captured))))))
+
 (deftest replace-performance-setlist-validates-songs
   (let [body (json/write-str {:songs ["Song A" ""]})
         response (replace-performance-setlist "1" (-> (mock/request :put "/performances/1/setlist" body)
