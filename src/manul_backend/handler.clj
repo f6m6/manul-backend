@@ -178,6 +178,34 @@
   "Return tracks for an album with ordering"
   [album-id]
   (let [rows (exec-raw
+              ["select a.id, a.title as album_title, a.artist, a.release_date,
+                      s.title as song_title, s.length, s.active, s.cover, s.instrumental, s.key,
+                      asg.track_number
+               from albums a
+               join album_songs asg on asg.album_id = a.id
+               join songs s on s.title = asg.song_title
+               where a.id = ?
+               order by asg.track_number asc"
+               [(Integer/parseInt album-id)]]
+              :results)
+        album (first rows)]
+    (if (nil? album)
+      (-> (json-response {:error "album not found"})
+          (resp/status 404))
+      (let [tracks (map (fn [row]
+                          {:track_number (:track_number row)
+                           :title (:song_title row)
+                           :length (when-let [l (:length row)] (str l))
+                           :active (:active row)
+                           :cover (:cover row)
+                           :instrumental (:instrumental row)
+                           :key (:key row)})
+                        rows)]
+        (json-response {:id (:id album)
+                        :title (:album_title album)
+                        :artist (:artist album)
+                        :release_date (when-let [d (:release_date album)] (str d))
+                        :tracks (vec tracks)})))))
 
 (defn update-venue
   "Update venue postcode"
