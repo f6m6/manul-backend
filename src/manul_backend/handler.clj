@@ -76,6 +76,31 @@
 (defentity next_song)
 (defentity song_performance_dates)
 
+(def gig-types #{"practice" "open_mic" "busking" "booked" "gig"})
+
+(defn normalize-gig-type
+  [gig-type]
+  (when (string? gig-type)
+    (let [trimmed (s/trim gig-type)]
+      (when (not (s/blank? trimmed)) trimmed))))
+
+(defn gig-type-from-flags
+  [free openmic]
+  (cond
+    (true? openmic) "open_mic"
+    (true? free) "busking"
+    :else "booked"))
+
+(defn gig-type->flags
+  [gig-type]
+  (case gig-type
+    "open_mic" {:free true :openmic true}
+    "busking" {:free true :openmic false}
+    "booked" {:free false :openmic false}
+    "gig" {:free false :openmic false}
+    "practice" {:free true :openmic false}
+    {:free true :openmic true}))
+
 (defn all-songs
   "List all songs in the system"
   []
@@ -103,7 +128,7 @@
   "List performances with nested setlists"
   []
   (let [rows (exec-raw
-              ["select p.id, p.performancedate, p.venue, p.free, p.openmic,
+              ["select p.id, p.performancedate, p.venue, p.free, p.openmic, p.gig_type,
                        sp.setlistposition, sp.song_id
                 from performances p
                 left join song_performances sp on sp.performance_id = p.id
@@ -124,6 +149,7 @@
                                :venue (:venue base)
                                :free (:free base)
                                :openmic (:openmic base)
+                               :gig_type (name (:gig_type base))
                                :setlist setlist})))
                      (sort-by :performancedate #(compare %2 %1))
                      vec)]
@@ -226,55 +252,74 @@
 (defn create-performance
   "Create a performance and its song_performances rows"
   [request]
-  (let [{:keys [venue songs date free openmic]} (json-read request)
+  (let [{:keys [venue songs date free openmic gig_type]} (json-read request)
         trimmed-venue (when venue (s/trim venue))
         songs-list (if (vector? songs) songs [])
         performance-date (if (and date (not (s/blank? date))) date (str (time/today)))
-        free-val (if (some? free) free true)
-        openmic-val (if (some? openmic) openmic true)]
+        gig-type-in (normalize-gig-type gig_type)
+        gig-type-val (cond
+                       (and gig-type-in (gig-types gig-type-in)) gig-type-in
+                       gig-type-in nil
+                       :else (gig-type-from-flags free openmic))
+        flags (gig-type->flags gig-type-val)
+        free-val (if gig-type-in (:free flags) (if (some? free) free true))
+        openmic-val (if gig-type-in (:openmic flags) (if (some? openmic) openmic true))]
     (if (or (s/blank? trimmed-venue)
             (not (seq songs-list))
             (not (every? (fn [song] (and (string? song) (not (s/blank? song)))) songs-list)))
       (-> (json-response {:error "venue and songs are required"})
           (resp/status 400))
-      (with-transaction
-       (fn []
-         (let [rows (exec-raw
-                     ["insert into performances (performancedate, venue, free, openmic) values (?, ?, ?, ?) returning id"
-                      [(java.sql.Date/valueOf performance-date) trimmed-venue free-val openmic-val]]
-                     :results)
-               performance-id (normalize-id rows)]
-           (doseq [[idx song] (map-indexed vector songs-list)]
-             (exec-raw
-              ["insert into song_performances (song_id, performance_id, setlistposition) values (?, ?, ?)"
-               [song performance-id (inc idx)]]))
-           (json-response {:performanceId performance-id
-                           :songs          (count songs-list)})))))))
+      (if (nil? gig-type-val)
+        (-> (json-response {:error "gig_type is invalid"})
+            (resp/status 400))
+        (with-transaction
+         (fn []
+           (let [rows (exec-raw
+                       ["insert into performances (performancedate, venue, free, openmic, gig_type) values (?, ?, ?, ?, ?) returning id"
+                        [(java.sql.Date/valueOf performance-date) trimmed-venue free-val openmic-val gig-type-val]]
+                       :results)
+                 performance-id (normalize-id rows)]
+             (doseq [[idx song] (map-indexed vector songs-list)]
+               (exec-raw
+                ["insert into song_performances (song_id, performance_id, setlistposition) values (?, ?, ?)"
+                 [song performance-id (inc idx)]]))
+             (json-response {:performanceId performance-id
+                             :songs          (count songs-list)}))))))))
 
 (defn update-performance
   "Update performance fields"
   [id request]
-  (let [{:keys [venue date free openmic]} (json-read request)
+  (let [{:keys [venue date free openmic gig_type]} (json-read request)
         trimmed-venue (when venue (s/trim venue))
         performance-date (if (and date (not (s/blank? date))) date nil)
-        free-val (if (some? free) free true)
-        openmic-val (if (some? openmic) openmic true)]
+        gig-type-in (normalize-gig-type gig_type)
+        gig-type-val (cond
+                       (and gig-type-in (gig-types gig-type-in)) gig-type-in
+                       gig-type-in nil
+                       :else (gig-type-from-flags free openmic))
+        flags (gig-type->flags gig-type-val)
+        free-val (if gig-type-in (:free flags) (if (some? free) free true))
+        openmic-val (if gig-type-in (:openmic flags) (if (some? openmic) openmic true))]
     (if (or (s/blank? trimmed-venue) (s/blank? performance-date))
       (-> (json-response {:error "venue and date are required"})
           (resp/status 400))
-      (let [rows (exec-raw
-                  ["update performances set performancedate = ?, venue = ?, free = ?, openmic = ? where id = ? returning id, performancedate, venue, free, openmic"
-                   [(java.sql.Date/valueOf performance-date) trimmed-venue free-val openmic-val (Integer/parseInt id)]]
-                  :results)
-            row (first rows)]
-        (if (nil? row)
-          (-> (json-response {:error "performance not found"})
-              (resp/status 404))
-          (json-response {:id (:id row)
-                          :performancedate (str (:performancedate row))
-                          :venue (:venue row)
-                          :free (:free row)
-                          :openmic (:openmic row)}))))))
+      (if (nil? gig-type-val)
+        (-> (json-response {:error "gig_type is invalid"})
+            (resp/status 400))
+        (let [rows (exec-raw
+                    ["update performances set performancedate = ?, venue = ?, free = ?, openmic = ?, gig_type = ? where id = ? returning id, performancedate, venue, free, openmic, gig_type"
+                     [(java.sql.Date/valueOf performance-date) trimmed-venue free-val openmic-val gig-type-val (Integer/parseInt id)]]
+                    :results)
+              row (first rows)]
+          (if (nil? row)
+            (-> (json-response {:error "performance not found"})
+                (resp/status 404))
+            (json-response {:id (:id row)
+                            :performancedate (str (:performancedate row))
+                            :venue (:venue row)
+                            :free (:free row)
+                            :openmic (:openmic row)
+                            :gig_type (name (:gig_type row))})))))))
 
 (defn replace-performance-setlist
   "Replace setlist for a performance"

@@ -65,10 +65,11 @@
 (deftest performances-with-setlists-nests-rows
   (with-redefs [korma/exec-raw (fn [& _]
                                  [{:id 2
-                                   :performancedate "2026-01-29"
+                                  :performancedate "2026-01-29"
                                    :venue "The Dignity"
                                    :free true
                                    :openmic true
+                                   :gig_type "open_mic"
                                    :setlistposition 1
                                    :song_id "Song A"}
                                   {:id 2
@@ -76,6 +77,7 @@
                                    :venue "The Dignity"
                                    :free true
                                    :openmic true
+                                   :gig_type "open_mic"
                                    :setlistposition 2
                                    :song_id "Song B"}
                                   {:id 1
@@ -83,6 +85,7 @@
                                    :venue "The Hideaway"
                                    :free false
                                    :openmic false
+                                   :gig_type "booked"
                                    :setlistposition nil
                                    :song_id nil}])]
     (let [response (performances-with-setlists)
