@@ -12,14 +12,17 @@
     (is (re-find #"venue and songs are required" (:body response)))))
 
 (deftest create-performance-uses-id-from-insert
-  (let [song-perf-insert (atom nil)]
+  (let [song-perf-insert (atom nil)
+        performance-insert (atom nil)]
     (with-redefs [with-transaction (fn [f] (f))
                   korma/exec-raw (fn [& args]
                                    (let [[sql params with-results?] (if (vector? (first args))
                                                                       [(first args) (second (first args)) (second args)]
                                                                       [(second args) (second (second args)) (nth args 2 nil)])]
                                      (cond
-                                       (re-find #"insert into performances" (first sql)) [{:id 123}]
+                                       (re-find #"insert into performances" (first sql)) (do
+                                                                                           (reset! performance-insert {:sql sql :params params})
+                                                                                           [{:id 123}])
                                        (re-find #"insert into song_performances" (first sql)) (do
                                                                                                 (reset! song-perf-insert sql)
                                                                                                 :ok)
@@ -29,9 +32,37 @@
                                              (mock/content-type "application/json")))
             response-body (json/read-str (:body response) :key-fn keyword)]
         (is (= 200 (:status response)))
+        (is (re-find #"insert into performances" (first (:sql @performance-insert))))
+        (is (= 0 (nth (:params @performance-insert) 4)))
+        (is (= "open_mic" (nth (:params @performance-insert) 5)))
         (is (= 123 (second (second @song-perf-insert))))
         (is (= 123 (:performanceId response-body)))
         (is (= 2 (:songs response-body)))))))
+
+(deftest create-performance-allows-fee-and-showcase-type
+  (let [performance-insert (atom nil)]
+    (with-redefs [with-transaction (fn [f] (f))
+                  korma/exec-raw (fn [& args]
+                                   (let [[sql params with-results?] (if (vector? (first args))
+                                                                      [(first args) (second (first args)) (second args)]
+                                                                      [(second args) (second (second args)) (nth args 2 nil)])]
+                                     (cond
+                                       (re-find #"insert into performances" (first sql)) (do
+                                                                                           (reset! performance-insert {:sql sql :params params})
+                                                                                           [{:id 77}])
+                                       (re-find #"insert into song_performances" (first sql)) :ok
+                                       :else :ok)))]
+      (let [body (json/write-str {:venue "The Joint"
+                                  :songs ["Song A"]
+                                  :gig_type "showcase"
+                                  :fee_micro_gbp 0})
+            response (create-performance (-> (mock/request :post "/create-performance" body)
+                                             (mock/content-type "application/json")))
+            response-body (json/read-str (:body response) :key-fn keyword)]
+        (is (= 200 (:status response)))
+        (is (= 77 (:performanceId response-body)))
+        (is (= 0 (nth (:params @performance-insert) 4)))
+        (is (= "showcase" (nth (:params @performance-insert) 5)))))))
 
 (deftest create-venue-requires-name
   (let [response (app (-> (mock/request :post "/create-venue" "{}")
