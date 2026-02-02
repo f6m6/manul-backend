@@ -190,6 +190,14 @@
       (is (= 400 (:status response)))
       (is (re-find #"gig_type is invalid" (:body response))))))
 
+(deftest update-performance-rejects-invalid-gig-type-before-db
+  (with-redefs [with-transaction (fn [_] (throw (ex-info "should not hit db" {})))]
+    (let [body (json/write-str {:venue "The Place" :date "2026-02-01" :gig_type "invalid_type"})
+          response (update-performance "42" (-> (mock/request :put "/performances/42" body)
+                                               (mock/content-type "application/json")))]
+      (is (= 400 (:status response)))
+      (is (re-find #"gig_type is invalid" (:body response))))))
+
 (deftest update-performance-requires-venue-and-date
   (let [body (json/write-str {:venue "   " :date "" :gig_type "open_mic"})
         response (update-performance "42" (-> (mock/request :put "/performances/42" body)
