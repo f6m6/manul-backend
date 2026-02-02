@@ -650,6 +650,9 @@
 (deftest normalize-fee-micro-gbp-trims-input
   (is (= 1200000 (normalize-fee-micro-gbp "  1200000  "))))
 
+(deftest normalize-fee-micro-gbp-rejects-non-numeric
+  (is (thrown? NumberFormatException (normalize-fee-micro-gbp "abc"))))
+
 (deftest normalize-gig-type-trims-and-rejects-blank
   (is (= "open_mic" (normalize-gig-type "  open_mic  ")))
   (is (nil? (normalize-gig-type "")))
