@@ -169,6 +169,13 @@
     (is (= 400 (:status response)))
     (is (re-find #"venuename is required" (:body response)))))
 
+(deftest create-venue-rejects-blank-name
+  (let [body (json/write-str {:venuename "   "})
+        response (create-venue (-> (mock/request :post "/create-venue" body)
+                                   (mock/content-type "application/json")))]
+    (is (= 400 (:status response)))
+    (is (re-find #"venuename is required" (:body response)))))
+
 (deftest create-venue-trims-and-inserts
   (let [inserted (atom nil)]
     (with-redefs [korma/exec-raw (fn [& args]
