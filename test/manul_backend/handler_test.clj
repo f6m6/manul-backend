@@ -175,6 +175,14 @@
     (is (= 400 (:status response)))
     (is (re-find #"venue and songs are required" (:body response)))))
 
+(deftest create-performance-rejects-invalid-gig-type-before-db
+  (with-redefs [with-transaction (fn [_] (throw (ex-info "should not hit db" {})))]
+    (let [body (json/write-str {:venue "The Place" :date "2026-02-01" :songs ["Song A"] :gig_type "invalid_type"})
+          response (create-performance (-> (mock/request :post "/create-performance" body)
+                                           (mock/content-type "application/json")))]
+      (is (= 400 (:status response)))
+      (is (re-find #"gig_type is invalid" (:body response))))))
+
 (deftest create-performance-requires-nonblank-venue
   (let [body (json/write-str {:venue "   " :songs ["Song A"]})
         response (create-performance (-> (mock/request :post "/create-performance" body)
