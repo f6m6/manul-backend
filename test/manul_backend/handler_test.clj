@@ -650,6 +650,13 @@
     (is (= 400 (:status response)))
     (is (re-find #"date is required" (:body response)))))
 
+(deftest update-practice-session-rejects-blank-songs
+  (let [body (json/write-str {:date "2026-02-01" :songs [" " "\t"]})
+        response (update-practice-session "42" (-> (mock/request :put "/practice-sessions/42" body)
+                                                   (mock/content-type "application/json")))]
+    (is (= 400 (:status response)))
+    (is (re-find #"songs are required" (:body response)))))
+
 (deftest update-practice-session-returns-404-when-missing
   (with-redefs [with-transaction (fn [f] (f))
                 korma/exec-raw (fn [& args]
