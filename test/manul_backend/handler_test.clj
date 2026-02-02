@@ -865,6 +865,9 @@
 (deftest normalize-fee-micro-gbp-handles-number
   (is (= 123 (normalize-fee-micro-gbp 123))))
 
+(deftest normalize-fee-micro-gbp-rounds-float
+  (is (= 12 (normalize-fee-micro-gbp 12.9))))
+
 (deftest parse-int-field-handles-blanks
   (is (nil? (parse-int-field nil)))
   (is (nil? (parse-int-field "")))
