@@ -165,6 +165,20 @@
         (is (= ["The Place" "AB12"] (:params @inserted)))
         (is (= "The Place" (:venuename response-body)))))))
 
+(deftest update-venue-trims-name
+  (with-redefs [korma/exec-raw (fn [& args]
+                                 (let [[sql params] (if (vector? (first args))
+                                                     (first args)
+                                                     (second args))]
+                                   [{:venuename (second params) :postcode "AB12"}]))]
+    (let [body (json/write-str {:venuename "  The Place  " :postcode "AB12"})
+          response (update-venue "  The Place  " (-> (mock/request :put "/venues/The%20Place" body)
+                                                    (mock/content-type "application/json")))
+          response-body (json/read-str (:body response) :key-fn keyword)]
+      (is (= 200 (:status response)))
+      (is (= "The Place" (:venuename response-body)))
+      (is (= "AB12" (:postcode response-body))))))
+
 (deftest create-song-requires-title
   (let [response (app (-> (mock/request :post "/create-song" "{}")
                           (mock/content-type "application/json")))]
