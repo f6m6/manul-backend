@@ -108,6 +108,13 @@
                                 (Long/parseLong trimmed)))
     :else nil))
 
+(defn parse-int-field
+  [value]
+  (when (and (some? value) (not (s/blank? (str value))))
+    (try
+      (Integer/parseInt (str value))
+      (catch NumberFormatException _ ::invalid))))
+
 (defn gig-type->flags
   [gig-type]
   (case gig-type
@@ -768,24 +775,30 @@
         active-val (if (some? active) active true)
         cover-val (if (some? cover) cover false)
         instrumental-val (if (some? instrumental) instrumental false)
-        bpm-val (when (and (some? bpm) (not (s/blank? (str bpm))))
-                  (Integer/parseInt (str bpm)))
-        capo-val (when (and (some? capo) (not (s/blank? (str capo))))
-                   (Integer/parseInt (str capo)))
+        bpm-val (parse-int-field bpm)
+        capo-val (parse-int-field capo)
         album-id (when (and (some? album_id) (not (s/blank? (str album_id))))
                    (Integer/parseInt (str album_id)))
         track-num (when (and (some? track_number) (not (s/blank? (str track_number))))
                     (Integer/parseInt (str track_number)))
         length-val (normalize-length-interval length)]
     (let [song-title (when title (s/trim title))]
-      (if (s/blank? song-title)
+      (cond
+        (s/blank? song-title)
         (-> (json-response {:error "title is required"})
             (resp/status 400))
+        (= bpm-val ::invalid)
+        (-> (json-response {:error "bpm must be a number"})
+            (resp/status 400))
+        (= capo-val ::invalid)
+        (-> (json-response {:error "capo must be a number"})
+            (resp/status 400))
+        :else
         (with-transaction
          (fn []
            (exec-raw
-           ["insert into songs (title, cover, active, key, length, instrumental, artist, bpm, recorded_key, my_live_key, capo) values (?, ?, ?, ?, ?::interval, ?, ?, ?, ?, ?, ?)"
-            [song-title cover-val active-val recorded_key length-val instrumental-val artist bpm-val recorded_key my_live_key capo-val]])
+            ["insert into songs (title, cover, active, key, length, instrumental, artist, bpm, recorded_key, my_live_key, capo) values (?, ?, ?, ?, ?::interval, ?, ?, ?, ?, ?, ?)"
+             [song-title cover-val active-val recorded_key length-val instrumental-val artist bpm-val recorded_key my_live_key capo-val]])
            (when album-id
              (exec-raw
               ["insert into album_songs (album_id, song_title, track_number) values (?, ?, ?)"
@@ -801,17 +814,23 @@
         cover-val (if (some? cover) cover false)
         instrumental-val (if (some? instrumental) instrumental false)
         length-val (normalize-length-interval length)
-        bpm-val (when (and (some? bpm) (not (s/blank? (str bpm))))
-                  (Integer/parseInt (str bpm)))
-        capo-val (when (and (some? capo) (not (s/blank? (str capo))))
-                   (Integer/parseInt (str capo)))
+        bpm-val (parse-int-field bpm)
+        capo-val (parse-int-field capo)
         album-id (when (and (some? album_id) (not (s/blank? (str album_id))))
                    (Integer/parseInt (str album_id)))
         track-num (when (and (some? track_number) (not (s/blank? (str track_number))))
                     (Integer/parseInt (str track_number)))]
-    (if (s/blank? song-title)
+    (cond
+      (s/blank? song-title)
       (-> (json-response {:error "title is required"})
           (resp/status 400))
+      (= bpm-val ::invalid)
+      (-> (json-response {:error "bpm must be a number"})
+          (resp/status 400))
+      (= capo-val ::invalid)
+      (-> (json-response {:error "capo must be a number"})
+          (resp/status 400))
+      :else
       (with-transaction
        (fn []
          (let [rows (exec-raw
