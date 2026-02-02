@@ -3,6 +3,7 @@
             [ring.mock.request :as mock]
             [clojure.data.json :as json]
             [korma.core :as korma]
+            [manul-backend.data.song-plays :as song-plays]
             [manul-backend.handler :refer :all]))
 
 (deftest create-performance-requires-venue-and-songs
@@ -737,6 +738,20 @@
                                                    (mock/content-type "application/json")))]
       (is (= 400 (:status response)))
       (is (re-find #"songs are required" (:body response))))))
+
+(deftest next-songs-to-practise-uses-play-anywhere-store
+  (let [captured (atom nil)
+        played-date (java.sql.Date/valueOf "2026-02-01")]
+    (with-redefs [song-plays/fetch-next-songs-to-play-anywhere (fn [store]
+                                                                 (reset! captured store)
+                                                                 [{:song_id "Song A"
+                                                                   :last_played_anywhere played-date}])]
+      (let [response (next-songs-to-practise)
+            body (json/read-str (:body response) :key-fn keyword)]
+        (is (= 200 (:status response)))
+        (is @captured)
+        (is (= "Song A" (:song_id (first body))))
+        (is (= "2026-02-01" (:last_played_anywhere (first body))))))))
 
 (deftest update-practice-session-returns-404-when-missing
   (with-redefs [with-transaction (fn [f] (f))

@@ -8,7 +8,8 @@
             [clj-time.format :as f]
             [ring.middleware.cors :refer [wrap-cors]]
             [ring.util.response :as resp]
-            [clojure.java.jdbc :as jdbc]))
+            [clojure.java.jdbc :as jdbc]
+            [manul-backend.data.song-plays :as song-plays]))
 
 (use 'korma.db)
 (use 'korma.core)
@@ -540,10 +541,10 @@
        json-response))
 
 (defn next-songs-to-practise
-  "Return a JSON array with songs, practice count and time since last practice"
+  "Return a JSON array with songs, play count and time since last play in any context"
   []
-  (->> (select view_next_songs_to_practise)
-       (map (fn [row] (clojure.core/update row :last_practiced str)))
+  (->> (song-plays/fetch-next-songs-to-play-anywhere song-plays/db-store)
+       (map (fn [row] (clojure.core/update row :last_played_anywhere str)))
        vec
        json-response))
 
