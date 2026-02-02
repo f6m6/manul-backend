@@ -448,6 +448,18 @@
       (is (= 404 (:status response)))
       (is (re-find #"venue not found" (:body response))))))
 
+(deftest delete-song-returns-404-when-missing
+  (with-redefs [korma/exec-raw (fn [& args]
+                                 (let [[sql params] (if (vector? (first args))
+                                                     (first args)
+                                                     (second args))]
+                                   (if (re-find #"delete from songs" sql)
+                                     []
+                                     :ok)))]
+    (let [response (delete-song "Missing Song")]
+      (is (= 404 (:status response)))
+      (is (re-find #"song not found" (:body response))))))
+
 (deftest create-practice-session-inserts-song-id
   (let [calls (atom [])]
     (with-redefs [with-transaction (fn [f] (f))
