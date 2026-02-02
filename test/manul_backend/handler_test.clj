@@ -488,6 +488,13 @@
     (is (= 400 (:status response)))
     (is (re-find #"bpm must be a number" (:body response)))))
 
+(deftest create-song-rejects-non-numeric-capo
+  (let [body (json/write-str {:title "Song A" :capo "high"})
+        response (create-song (-> (mock/request :post "/create-song" body)
+                                  (mock/content-type "application/json")))]
+    (is (= 400 (:status response)))
+    (is (re-find #"capo must be a number" (:body response)))))
+
 (deftest create-practice-session-inserts-song-id
   (let [calls (atom [])]
     (with-redefs [with-transaction (fn [f] (f))
