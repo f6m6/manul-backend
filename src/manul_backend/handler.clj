@@ -560,20 +560,25 @@
         flags (gig-type->flags gig-type-val)
         free-val (:free flags)
         openmic-val (:openmic flags)
-        fee-micro (or (normalize-fee-micro-gbp fee_micro_gbp) 0)]
+        fee-micro (normalize-fee-micro-gbp fee_micro_gbp)]
     (if (or (s/blank? trimmed-venue)
             (not (seq songs-list))
             (not (every? (fn [song] (and (string? song) (not (s/blank? song)))) songs-list)))
       (-> (json-response {:error "venue and songs are required"})
           (resp/status 400))
-      (if (nil? gig-type-val)
+      (cond
+        (nil? gig-type-val)
         (-> (json-response {:error "gig_type is invalid"})
             (resp/status 400))
+        (= fee-micro ::invalid)
+        (-> (json-response {:error "fee_micro_gbp is invalid"})
+            (resp/status 400))
+        :else
         (with-transaction
          (fn []
            (let [rows (exec-raw
                        ["insert into performances (performancedate, venue, free, openmic, fee_micro_gbp, gig_type) values (?, ?, ?, ?, ?, ?::gig_type) returning id"
-                        [(java.sql.Date/valueOf performance-date) trimmed-venue free-val openmic-val fee-micro gig-type-val]]
+                        [(java.sql.Date/valueOf performance-date) trimmed-venue free-val openmic-val (or fee-micro 0) gig-type-val]]
                        :results)
                  performance-id (normalize-id rows)]
              (doseq [[idx song] (map-indexed vector songs-list)]
@@ -694,16 +699,21 @@
         flags (gig-type->flags gig-type-val)
         free-val (:free flags)
         openmic-val (:openmic flags)
-        fee-micro (or (normalize-fee-micro-gbp fee_micro_gbp) 0)]
+        fee-micro (normalize-fee-micro-gbp fee_micro_gbp)]
     (if (or (s/blank? trimmed-venue) (s/blank? performance-date))
       (-> (json-response {:error "venue and date are required"})
           (resp/status 400))
-      (if (nil? gig-type-val)
+      (cond
+        (nil? gig-type-val)
         (-> (json-response {:error "gig_type is invalid"})
             (resp/status 400))
+        (= fee-micro ::invalid)
+        (-> (json-response {:error "fee_micro_gbp is invalid"})
+            (resp/status 400))
+        :else
         (let [rows (exec-raw
                     ["update performances set performancedate = ?, venue = ?, free = ?, openmic = ?, fee_micro_gbp = ?, gig_type = ?::gig_type where id = ? returning id, performancedate, venue, free, openmic, fee_micro_gbp, gig_type"
-                     [(java.sql.Date/valueOf performance-date) trimmed-venue free-val openmic-val fee-micro gig-type-val (Integer/parseInt id)]]
+                     [(java.sql.Date/valueOf performance-date) trimmed-venue free-val openmic-val (or fee-micro 0) gig-type-val (Integer/parseInt id)]]
                     :results)
               row (first rows)]
           (if (nil? row)

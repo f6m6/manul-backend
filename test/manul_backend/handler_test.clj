@@ -125,6 +125,14 @@
         (is (= 200 (:status response)))
         (is (= 0 (nth (:params @performance-update) 4)))))))
 
+(deftest update-performance-rejects-invalid-fee
+  (with-redefs [korma/exec-raw (fn [& _] :ok)]
+    (let [body (json/write-str {:venue "The Place" :date "2026-02-01" :gig_type "open_mic" :fee_micro_gbp "abc"})
+          response (update-performance "1" (-> (mock/request :put "/performances/1" body)
+                                              (mock/content-type "application/json")))]
+      (is (= 400 (:status response)))
+      (is (re-find #"fee_micro_gbp is invalid" (:body response))))))
+
 (deftest create-performance-rejects-invalid-gig-type
   (let [body (json/write-str {:venue "The Place" :songs ["Song A"] :gig_type "invalid_type"})
         response (create-performance (-> (mock/request :post "/create-performance" body)
@@ -790,6 +798,15 @@
 
 (deftest normalize-fee-micro-gbp-rejects-non-numeric
   (is (= :manul-backend.handler/invalid (normalize-fee-micro-gbp "abc"))))
+
+(deftest create-performance-rejects-invalid-fee
+  (with-redefs [with-transaction (fn [f] (f))
+                korma/exec-raw (fn [& _] :ok)]
+    (let [body (json/write-str {:venue "The Place" :songs ["Song A"] :fee_micro_gbp "abc"})
+          response (create-performance (-> (mock/request :post "/create-performance" body)
+                                           (mock/content-type "application/json")))]
+      (is (= 400 (:status response)))
+      (is (re-find #"fee_micro_gbp is invalid" (:body response))))))
 
 (deftest normalize-fee-micro-gbp-handles-nil
   (is (nil? (normalize-fee-micro-gbp nil))))
