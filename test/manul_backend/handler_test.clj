@@ -664,6 +664,9 @@
 (deftest normalize-fee-micro-gbp-rejects-non-numeric
   (is (thrown? NumberFormatException (normalize-fee-micro-gbp "abc"))))
 
+(deftest normalize-fee-micro-gbp-handles-nil
+  (is (nil? (normalize-fee-micro-gbp nil))))
+
 (deftest normalize-gig-type-trims-and-rejects-blank
   (is (= "open_mic" (normalize-gig-type "  open_mic  ")))
   (is (nil? (normalize-gig-type "")))
