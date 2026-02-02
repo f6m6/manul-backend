@@ -163,6 +163,14 @@
         (let [update (first @calls)]
           (is (= "open_mic" (nth (:params update) 5))))))))
 
+(deftest update-performance-returns-404-when-missing
+  (with-redefs [korma/exec-raw (fn [& _] [])]
+    (let [body (json/write-str {:venue "The Place" :date "2026-02-01" :gig_type "open_mic"})
+          response (update-performance "999" (-> (mock/request :put "/performances/999" body)
+                                                 (mock/content-type "application/json")))]
+      (is (= 404 (:status response)))
+      (is (re-find #"performance not found" (:body response))))))
+
 (deftest create-venue-requires-name
   (let [response (app (-> (mock/request :post "/create-venue" "{}")
                           (mock/content-type "application/json")))]
