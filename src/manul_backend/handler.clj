@@ -113,9 +113,11 @@
 (defn parse-int-field
   [value]
   (when (and (some? value) (not (s/blank? (str value))))
-    (try
-      (Integer/parseInt (str value))
-      (catch NumberFormatException _ ::invalid))))
+    (let [trimmed (s/trim (str value))]
+      (when (not (s/blank? trimmed))
+        (try
+          (Integer/parseInt trimmed)
+          (catch NumberFormatException _ ::invalid))))))
 
 (defn gig-type->flags
   [gig-type]

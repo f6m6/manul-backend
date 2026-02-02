@@ -874,6 +874,9 @@
   (is (= 42 (parse-int-field "42")))
   (is (= 7 (parse-int-field 7))))
 
+(deftest parse-int-field-trims-whitespace
+  (is (= 7 (parse-int-field "  7  "))))
+
 (deftest normalize-gig-type-trims-and-rejects-blank
   (is (= "open_mic" (normalize-gig-type "  open_mic  ")))
   (is (nil? (normalize-gig-type "")))
