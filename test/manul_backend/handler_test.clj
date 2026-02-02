@@ -536,6 +536,13 @@
         (is (= ["Song A" false true nil nil false nil nil nil nil nil] (:params @inserted)))
         (is (= "Song A" (:title response-body)))))))
 
+(deftest create-song-rejects-blank-title
+  (let [body (json/write-str {:title "   "})
+        response (create-song (-> (mock/request :post "/create-song" body)
+                                  (mock/content-type "application/json")))]
+    (is (= 400 (:status response)))
+    (is (re-find #"title is required" (:body response)))))
+
 (deftest create-song-casts-length-to-interval
   (let [inserted (atom nil)]
     (with-redefs [with-transaction (fn [f] (f))
