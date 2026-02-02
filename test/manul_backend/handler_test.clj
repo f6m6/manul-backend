@@ -104,6 +104,27 @@
         (is (= 200 (:status response)))
         (is (= 0 (nth (:params @performance-insert) 4)))))))
 
+(deftest update-performance-normalizes-fee
+  (let [performance-update (atom nil)]
+    (with-redefs [korma/exec-raw (fn [& args]
+                                   (let [[sql params] (if (vector? (first args))
+                                                       (first args)
+                                                       (second args))]
+                                     (when (re-find #"update performances" sql)
+                                       (reset! performance-update {:sql sql :params params}))
+                                     [{:id 1
+                                       :performancedate "2026-02-01"
+                                       :venue "The Place"
+                                       :free false
+                                       :openmic true
+                                       :fee_micro_gbp 0
+                                       :gig_type "open_mic"}]))]
+      (let [body (json/write-str {:venue "The Place" :date "2026-02-01" :gig_type "open_mic" :fee_micro_gbp "0"})
+            response (update-performance "1" (-> (mock/request :put "/performances/1" body)
+                                                (mock/content-type "application/json")))]
+        (is (= 200 (:status response)))
+        (is (= 0 (nth (:params @performance-update) 4)))))))
+
 (deftest create-performance-rejects-invalid-gig-type
   (let [body (json/write-str {:venue "The Place" :songs ["Song A"] :gig_type "invalid_type"})
         response (create-performance (-> (mock/request :post "/create-performance" body)
