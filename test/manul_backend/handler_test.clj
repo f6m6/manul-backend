@@ -464,6 +464,13 @@
         (is (some #(re-find #"delete from singing_lesson_songs" (:sql %)) @calls))
         (is (some #(re-find #"insert into singing_lesson_songs" (:sql %)) @calls))))))
 
+(deftest update-singing-lesson-requires-date
+  (let [body (json/write-str {:date "" :songs ["Song A"]})
+        response (update-singing-lesson "42" (-> (mock/request :put "/singing-lessons/42" body)
+                                                 (mock/content-type "application/json")))]
+    (is (= 400 (:status response)))
+    (is (re-find #"date is required" (:body response)))))
+
 (deftest update-singing-lesson-returns-404-when-missing
   (with-redefs [with-transaction (fn [f] (f))
                 korma/exec-raw (fn [& args]
