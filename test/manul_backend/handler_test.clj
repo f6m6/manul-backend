@@ -777,6 +777,9 @@
 (deftest normalize-length-interval-expands-mmss-with-leading-zero
   (is (= "00:00:59" (normalize-length-interval "0:59"))))
 
+(deftest normalize-length-interval-trims-whitespace
+  (is (= "00:04:05" (normalize-length-interval "  4:05  "))))
+
 (deftest normalize-fee-micro-gbp-parses-strings
   (is (= 1200000 (normalize-fee-micro-gbp "1200000")))
   (is (= 1200000 (normalize-fee-micro-gbp 1200000)))
