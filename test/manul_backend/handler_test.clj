@@ -674,6 +674,9 @@
 (deftest normalize-fee-micro-gbp-handles-numeric-string
   (is (= 123 (normalize-fee-micro-gbp "123"))))
 
+(deftest normalize-fee-micro-gbp-handles-number
+  (is (= 123 (normalize-fee-micro-gbp 123))))
+
 (deftest normalize-gig-type-trims-and-rejects-blank
   (is (= "open_mic" (normalize-gig-type "  open_mic  ")))
   (is (nil? (normalize-gig-type "")))
