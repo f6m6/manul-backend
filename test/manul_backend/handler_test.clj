@@ -85,6 +85,25 @@
         (is (= 88 (:performanceId response-body)))
         (is (= "open_mic" (nth (:params @performance-insert) 5)))))))
 
+(deftest create-performance-normalizes-fee
+  (let [performance-insert (atom nil)]
+    (with-redefs [with-transaction (fn [f] (f))
+                  korma/exec-raw (fn [& args]
+                                   (let [[sql params with-results?] (if (vector? (first args))
+                                                                      [(first args) (second (first args)) (second args)]
+                                                                      [(second args) (second (second args)) (nth args 2 nil)])]
+                                     (cond
+                                       (re-find #"insert into performances" (first sql)) (do
+                                                                                           (reset! performance-insert {:sql sql :params params})
+                                                                                           [{:id 77}])
+                                       (re-find #"insert into song_performances" (first sql)) :ok
+                                       :else :ok)))]
+      (let [body (json/write-str {:venue "The Place" :songs ["Song A"] :gig_type "open_mic" :fee_micro_gbp "0"})
+            response (create-performance (-> (mock/request :post "/create-performance" body)
+                                             (mock/content-type "application/json")))]
+        (is (= 200 (:status response)))
+        (is (= 0 (nth (:params @performance-insert) 4)))))))
+
 (deftest create-performance-rejects-invalid-gig-type
   (let [body (json/write-str {:venue "The Place" :songs ["Song A"] :gig_type "invalid_type"})
         response (create-performance (-> (mock/request :post "/create-performance" body)
