@@ -667,6 +667,10 @@
 (deftest normalize-fee-micro-gbp-handles-nil
   (is (nil? (normalize-fee-micro-gbp nil))))
 
+(deftest normalize-fee-micro-gbp-handles-zero
+  (is (= 0 (normalize-fee-micro-gbp 0)))
+  (is (= 0 (normalize-fee-micro-gbp "0"))))
+
 (deftest normalize-gig-type-trims-and-rejects-blank
   (is (= "open_mic" (normalize-gig-type "  open_mic  ")))
   (is (nil? (normalize-gig-type "")))
