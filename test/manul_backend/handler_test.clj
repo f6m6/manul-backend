@@ -460,6 +460,13 @@
       (is (= 404 (:status response)))
       (is (re-find #"song not found" (:body response))))))
 
+(deftest update-song-returns-400-on-blank-title
+  (let [body (json/write-str {:active false})
+        response (update-song "   " (-> (mock/request :put "/songs/%20%20%20" body)
+                                        (mock/content-type "application/json")))]
+    (is (= 400 (:status response)))
+    (is (re-find #"title is required" (:body response)))))
+
 (deftest create-practice-session-inserts-song-id
   (let [calls (atom [])]
     (with-redefs [with-transaction (fn [f] (f))
