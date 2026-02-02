@@ -701,6 +701,14 @@
       (is (= "The Place" (:venuename response-body)))
       (is (= "AB12" (:postcode response-body))))))
 
+(deftest update-venue-returns-404-when-missing
+  (with-redefs [korma/exec-raw (fn [& _] [])]
+    (let [body (json/write-str {:postcode "AB12"})
+          response (update-venue "Missing" (-> (mock/request :put "/venues/Missing" body)
+                                               (mock/content-type "application/json")))]
+      (is (= 404 (:status response)))
+      (is (re-find #"venue not found" (:body response))))))
+
 (deftest live-gigs-by-year-returns-stats
   (with-redefs [korma/exec-raw (fn [& _]
                                  [{:year 2023 :gigs 5 :estimated_minutes 120}
