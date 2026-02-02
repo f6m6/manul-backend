@@ -15,6 +15,8 @@ REST API for the Manul gig tracker. This service reads from a local PostgreSQL d
 ### Database
 This backend expects a local Postgres database named `manul` with tables/views already present.
 
+There is also a `manul_test` database (a clone of `manul`) for safe migrations and endpoint verification.
+
 ### Migrations
 All DB changes must be done via SQL migrations (no ad‑hoc DB edits).
 
@@ -22,6 +24,11 @@ All DB changes must be done via SQL migrations (no ad‑hoc DB edits).
 - Apply with:
 ```
 psql -U postgres -d manul -f migrations/<file>.sql
+```
+
+For safe testing first, apply to `manul_test`:
+```
+psql -U postgres -d manul_test -f migrations/<file>.sql
 ```
 
 ### Run
@@ -39,6 +46,12 @@ lein ring server
 ```
 
 Server runs on `http://localhost:3000`.
+
+To run against the test DB instead:
+```
+$env.GIGS_DATABASE = "manul_test"
+lein ring server
+```
 
 ## Useful endpoints
 - `/all-songs`
