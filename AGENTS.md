@@ -4,7 +4,7 @@ Clojure/Lein REST API for the gig tracker.
 
 ## Run
 ```
-cd /Users/farhan/code/manul-backend
+cd /Users/farhan/code/manul/manul-backend
 lein ring server
 ```
 
@@ -23,3 +23,6 @@ Test DB notes:
 ## Conventions
 - Prefer TDD: add or update tests before functional changes.
 - Keep endpoint naming consistent ("performed live" vs "practise").
+
+## ADRs
+Architecture decisions live in `docs/adr/`.

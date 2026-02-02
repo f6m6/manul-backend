@@ -34,7 +34,7 @@ psql -U postgres -d manul_test -f migrations/<file>.sql
 ### Run
 In Nushell:
 ```
-cd /Users/farhan/code/manul-backend
+cd /Users/farhan/code/manul/manul-backend
 
 $env.GIGS_HOST = "localhost"
 $env.GIGS_DATABASE = "manul"
@@ -66,6 +66,9 @@ lein ring server
 ## Conventions
 - Prefer TDD: add or update tests before functional changes.
 - Keep naming consistent ("performed live" vs "practise").
+
+## ADRs
+Architecture decisions live in `docs/adr/`.
 
 ## Relationship to other repos
 - **manul-frontend** calls this API and expects legacy endpoints like `/next-songs-to-play`.
