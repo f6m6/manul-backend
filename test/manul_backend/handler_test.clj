@@ -808,6 +808,14 @@
       (is (= 400 (:status response)))
       (is (re-find #"fee_micro_gbp is invalid" (:body response))))))
 
+(deftest create-performance-rejects-invalid-fee-before-db
+  (with-redefs [with-transaction (fn [_] (throw (ex-info "should not hit db" {})))]
+    (let [body (json/write-str {:venue "The Place" :songs ["Song A"] :fee_micro_gbp "abc"})
+          response (create-performance (-> (mock/request :post "/create-performance" body)
+                                           (mock/content-type "application/json")))]
+      (is (= 400 (:status response)))
+      (is (re-find #"fee_micro_gbp is invalid" (:body response))))))
+
 (deftest update-performance-rejects-invalid-fee-before-db
   (with-redefs [with-transaction (fn [_] (throw (ex-info "should not hit db" {})))]
     (let [body (json/write-str {:venue "The Place" :date "2026-02-01" :gig_type "open_mic" :fee_micro_gbp "abc"})
