@@ -821,6 +821,14 @@
 (deftest normalize-fee-micro-gbp-handles-number
   (is (= 123 (normalize-fee-micro-gbp 123))))
 
+(deftest parse-int-field-handles-blanks
+  (is (nil? (parse-int-field nil)))
+  (is (nil? (parse-int-field "")))
+  (is (nil? (parse-int-field "   "))))
+
+(deftest parse-int-field-rejects-non-numeric
+  (is (= :manul-backend.handler/invalid (parse-int-field "abc"))))
+
 (deftest normalize-gig-type-trims-and-rejects-blank
   (is (= "open_mic" (normalize-gig-type "  open_mic  ")))
   (is (nil? (normalize-gig-type "")))
