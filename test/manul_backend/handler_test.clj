@@ -813,6 +813,9 @@
   (is (nil? (normalize-gig-type nil)))
   (is (nil? (normalize-gig-type 123))))
 
+(deftest normalize-gig-type-trims-tabs
+  (is (= "open_mic" (normalize-gig-type (str "\t" "open_mic" "\t")))))
+
 (deftest create-song-inserts-album-association
   (let [calls (atom [])]
     (with-redefs [with-transaction (fn [f] (f))
