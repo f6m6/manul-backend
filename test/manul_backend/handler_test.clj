@@ -3,6 +3,7 @@
             [ring.mock.request :as mock]
             [clojure.data.json :as json]
             [korma.core :as korma]
+            [manul-backend.data.recent-sessions :as recent-sessions]
             [manul-backend.data.song-plays :as song-plays]
             [manul-backend.handler :refer :all]))
 
@@ -752,6 +753,29 @@
         (is @captured)
         (is (= "Song A" (:song_id (first body))))
         (is (= "2026-02-01" (:last_played_anywhere (first body))))))))
+
+(deftest recent-sessions-uses-store
+  (let [captured (atom nil)
+        session-date (java.sql.Date/valueOf "2026-02-01")]
+    (with-redefs [recent-sessions/fetch-recent-sessions-from
+                  (fn [store limit]
+                    (reset! captured {:store store :limit limit})
+                    [{:session_type "solo_practice"
+                      :session_id 7
+                      :session_date session-date
+                      :session_label nil
+                      :song_count 3
+                      :estimated_minutes 25}])]
+      (let [response (recent-sessions)
+            body (json/read-str (:body response) :key-fn keyword)]
+        (is (= 200 (:status response)))
+        (is (= 5 (:limit @captured)))
+        (is (:store @captured))
+        (is (= "solo_practice" (:session_type (first body))))
+        (is (= 7 (:session_id (first body))))
+        (is (= "2026-02-01" (:session_date (first body))))
+        (is (= 3 (:song_count (first body))))
+        (is (= 25 (:estimated_minutes (first body))))))))
 
 (deftest update-practice-session-returns-404-when-missing
   (with-redefs [with-transaction (fn [f] (f))

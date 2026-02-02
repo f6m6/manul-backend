@@ -9,6 +9,7 @@
             [ring.middleware.cors :refer [wrap-cors]]
             [ring.util.response :as resp]
             [clojure.java.jdbc :as jdbc]
+            [manul-backend.data.recent-sessions :as recent-sessions]
             [manul-backend.data.song-plays :as song-plays]))
 
 (use 'korma.db)
@@ -548,6 +549,14 @@
        vec
        json-response))
 
+(defn recent-sessions
+  "Return a JSON array with the most recent sessions across any play context"
+  []
+  (->> (recent-sessions/fetch-recent-sessions-from recent-sessions/db-store 5)
+       (map (fn [row] (clojure.core/update row :session_date str)))
+       vec
+       json-response))
+
 (defn create-performance
   "Create a performance and its song_performances rows"
   [request]
@@ -969,6 +978,7 @@
   (GET "/next-songs-to-play" [] (next-songs-to-perform-live))
   (GET "/next-songs-to-perform-live" [] (next-songs-to-perform-live))
   (GET "/next-songs-to-practise" [] (next-songs-to-practise))
+  (GET "/recent-sessions" [] (recent-sessions))
   (GET "/next-active-songs" [] (next-active-songs))
   (GET "/performances" [] (all-performances))
   (GET "/performances-with-setlists" [] (performances-with-setlists))
