@@ -655,6 +655,10 @@
   (is (nil? (normalize-gig-type "")))
   (is (nil? (normalize-gig-type "   "))))
 
+(deftest normalize-gig-type-rejects-non-strings
+  (is (nil? (normalize-gig-type nil)))
+  (is (nil? (normalize-gig-type 123))))
+
 (deftest create-song-inserts-album-association
   (let [calls (atom [])]
     (with-redefs [with-transaction (fn [f] (f))
