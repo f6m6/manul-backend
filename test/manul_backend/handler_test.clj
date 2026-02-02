@@ -816,6 +816,9 @@
 (deftest normalize-length-interval-keeps-mmss-seconds
   (is (= "00:10:09" (normalize-length-interval "10:09"))))
 
+(deftest normalize-length-interval-keeps-zero
+  (is (= "00:00:00" (normalize-length-interval "00:00:00"))))
+
 (deftest normalize-length-interval-trims-hms
   (is (= "01:02:03" (normalize-length-interval " 01:02:03 "))))
 
