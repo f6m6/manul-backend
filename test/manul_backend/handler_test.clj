@@ -653,6 +653,9 @@
 (deftest normalize-length-interval-expands-mmss
   (is (= "00:04:05" (normalize-length-interval "4:05"))))
 
+(deftest normalize-length-interval-keeps-non-time-string
+  (is (= "unknown" (normalize-length-interval "unknown"))))
+
 (deftest normalize-fee-micro-gbp-parses-strings
   (is (= 1200000 (normalize-fee-micro-gbp "1200000")))
   (is (= 1200000 (normalize-fee-micro-gbp 1200000)))
