@@ -142,6 +142,27 @@
         (let [update (first @calls)]
           (is (= "The Place" (nth (:params update) 1))))))))
 
+(deftest update-performance-trims-gig-type
+  (let [calls (atom [])]
+    (with-redefs [korma/exec-raw (fn [& args]
+                                   (let [[sql params] (if (vector? (first args))
+                                                       (first args)
+                                                       (second args))]
+                                     (swap! calls conj {:sql sql :params params})
+                                     [{:id 1
+                                       :performancedate "2026-02-01"
+                                       :venue "The Place"
+                                       :free false
+                                       :openmic true
+                                       :fee_micro_gbp 0
+                                       :gig_type "open_mic"}]))]
+      (let [body (json/write-str {:venue "The Place" :date "2026-02-01" :gig_type "  open_mic  "})
+            response (update-performance "1" (-> (mock/request :put "/performances/1" body)
+                                                (mock/content-type "application/json")))]
+        (is (= 200 (:status response)))
+        (let [update (first @calls)]
+          (is (= "open_mic" (nth (:params update) 5))))))))
+
 (deftest create-venue-requires-name
   (let [response (app (-> (mock/request :post "/create-venue" "{}")
                           (mock/content-type "application/json")))]
