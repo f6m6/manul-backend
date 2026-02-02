@@ -168,6 +168,13 @@
     (is (= 400 (:status response)))
     (is (re-find #"venue and songs are required" (:body response)))))
 
+(deftest create-performance-rejects-non-string-song
+  (let [body (json/write-str {:venue "The Place" :songs [123]})
+        response (create-performance (-> (mock/request :post "/create-performance" body)
+                                         (mock/content-type "application/json")))]
+    (is (= 400 (:status response)))
+    (is (re-find #"venue and songs are required" (:body response)))))
+
 (deftest create-performance-requires-nonblank-venue
   (let [body (json/write-str {:venue "   " :songs ["Song A"]})
         response (create-performance (-> (mock/request :post "/create-performance" body)
