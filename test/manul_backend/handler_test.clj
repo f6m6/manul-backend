@@ -876,6 +876,9 @@
 (deftest parse-int-field-rejects-non-numeric
   (is (= :manul-backend.handler/invalid (parse-int-field "abc"))))
 
+(deftest parse-int-field-rejects-float-string
+  (is (= :manul-backend.handler/invalid (parse-int-field "7.2"))))
+
 (deftest parse-int-field-parses-numeric
   (is (= 42 (parse-int-field "42")))
   (is (= 7 (parse-int-field 7))))
