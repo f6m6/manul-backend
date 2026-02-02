@@ -789,7 +789,7 @@
   (is (= 1200000 (normalize-fee-micro-gbp "  1200000  "))))
 
 (deftest normalize-fee-micro-gbp-rejects-non-numeric
-  (is (thrown? NumberFormatException (normalize-fee-micro-gbp "abc"))))
+  (is (= :manul-backend.handler/invalid (normalize-fee-micro-gbp "abc"))))
 
 (deftest normalize-fee-micro-gbp-handles-nil
   (is (nil? (normalize-fee-micro-gbp nil))))

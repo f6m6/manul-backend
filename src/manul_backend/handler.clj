@@ -105,7 +105,9 @@
     (number? fee-micro-gbp) (long fee-micro-gbp)
     (string? fee-micro-gbp) (let [trimmed (s/trim fee-micro-gbp)]
                               (when (not (s/blank? trimmed))
-                                (Long/parseLong trimmed)))
+                                (try
+                                  (Long/parseLong trimmed)
+                                  (catch NumberFormatException _ ::invalid))))
     :else nil))
 
 (defn parse-int-field
