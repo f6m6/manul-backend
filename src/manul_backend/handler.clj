@@ -187,13 +187,13 @@
   "List performances with nested setlists"
   []
   (let [rows (exec-raw
-              ["select p.id, p.performancedate, p.venue, p.free, p.openmic, p.gig_type,
+              ["select p.id, p.performancedate, p.created_at, p.venue, p.free, p.openmic, p.gig_type,
                        p.fee_micro_gbp,
                        sp.setlistposition, sp.song_id, s.length
                 from performances p
                 left join song_performances sp on sp.performance_id = p.id
                 left join songs s on s.title = sp.song_id
-                order by p.performancedate desc, p.id desc, sp.setlistposition asc"]
+                order by p.created_at desc, p.id desc, sp.setlistposition asc"]
               :results)
         grouped (->> rows
                      (group-by :id)
@@ -208,6 +208,7 @@
                                   estimated-time (estimated-minutes items)]
                               {:id id
                                :performancedate (str (:performancedate base))
+                               :created_at (when-let [created (:created_at base)] (str created))
                                :venue (:venue base)
                                :free (:free base)
                                :openmic (:openmic base)
@@ -215,7 +216,9 @@
                                :fee_micro_gbp (:fee_micro_gbp base)
                                :estimated_time_minutes estimated-time
                                :setlist setlist})))
-                     (sort-by :performancedate #(compare %2 %1))
+                     (sort-by (fn [row]
+                                (or (:created_at row) (:performancedate row)))
+                              #(compare %2 %1))
                      vec)]
     (json-response grouped)))
 
@@ -227,14 +230,14 @@
       (-> (json-response {:error "venuename is required"})
           (resp/status 400))
       (let [rows (exec-raw
-                  ["select p.id, p.performancedate, p.venue, p.free, p.openmic, p.gig_type,
+                  ["select p.id, p.performancedate, p.created_at, p.venue, p.free, p.openmic, p.gig_type,
                            p.fee_micro_gbp,
                            sp.setlistposition, sp.song_id, s.length
                     from performances p
                     left join song_performances sp on sp.performance_id = p.id
                     left join songs s on s.title = sp.song_id
                     where p.venue = ?
-                    order by p.performancedate desc, p.id desc, sp.setlistposition asc"
+                    order by p.created_at desc, p.id desc, sp.setlistposition asc"
                    [venue-name]]
                   :results)
             grouped (->> rows
@@ -250,6 +253,7 @@
                                       estimated-time (estimated-minutes items)]
                                   {:id id
                                    :performancedate (str (:performancedate base))
+                                   :created_at (when-let [created (:created_at base)] (str created))
                                    :venue (:venue base)
                                    :free (:free base)
                                    :openmic (:openmic base)
@@ -257,7 +261,9 @@
                                    :fee_micro_gbp (:fee_micro_gbp base)
                                    :estimated_time_minutes estimated-time
                                    :setlist setlist})))
-                         (sort-by :performancedate #(compare %2 %1))
+                         (sort-by (fn [row]
+                                    (or (:created_at row) (:performancedate row)))
+                                  #(compare %2 %1))
                          vec)]
         (json-response grouped)))))
 
@@ -265,7 +271,7 @@
   "List practice sessions with nested songs"
   []
   (let [rows (exec-raw
-              ["select ps.id, ps.practiced_on, ps.total_minutes,\n                      pss.position, pss.song_id, pss.song_title, pss.minutes, s.length\n               from practice_sessions ps\n               left join practice_session_songs pss on pss.practice_session_id = ps.id\n               left join songs s on s.title = pss.song_id\n               order by ps.practiced_on desc, ps.id desc, pss.position asc"]
+              ["select ps.id, ps.practiced_on, ps.created_at, ps.total_minutes,\n                      pss.position, pss.song_id, pss.song_title, pss.minutes, s.length\n               from practice_sessions ps\n               left join practice_session_songs pss on pss.practice_session_id = ps.id\n               left join songs s on s.title = pss.song_id\n               order by ps.created_at desc, ps.id desc, pss.position asc"]
               :results)
         grouped (->> rows
                      (group-by :id)
@@ -281,10 +287,13 @@
                                   estimated-time (estimated-minutes items)]
                               {:id id
                                :practiced_on (str (:practiced_on base))
+                               :created_at (when-let [created (:created_at base)] (str created))
                                :total_minutes (:total_minutes base)
                                :estimated_time_minutes estimated-time
                                :songs songs})))
-                     (sort-by :practiced_on #(compare %2 %1))
+                     (sort-by (fn [row]
+                                (or (:created_at row) (:practiced_on row)))
+                              #(compare %2 %1))
                      vec)]
     (json-response grouped)))
 
@@ -292,7 +301,7 @@
   "List singing lessons with nested songs"
   []
   (let [rows (exec-raw
-              ["select sl.id, sl.lesson_date, sl.duration_minutes,\n               sls.position, sls.song_title\n               from singing_lessons sl\n               left join singing_lesson_songs sls on sls.singing_lesson_id = sl.id\n               order by sl.lesson_date desc, sl.id desc, sls.position asc"]
+              ["select sl.id, sl.lesson_date, sl.created_at, sl.duration_minutes,\n               sls.position, sls.song_title\n               from singing_lessons sl\n               left join singing_lesson_songs sls on sls.singing_lesson_id = sl.id\n               order by sl.created_at desc, sl.id desc, sls.position asc"]
               :results)
         grouped (->> rows
                      (group-by :id)
@@ -306,9 +315,12 @@
                                              vec)]
                               {:id id
                                :lesson_date (str (:lesson_date base))
+                               :created_at (when-let [created (:created_at base)] (str created))
                                :duration_minutes (:duration_minutes base)
                                :songs songs})))
-                     (sort-by :lesson_date #(compare %2 %1))
+                     (sort-by (fn [row]
+                                (or (:created_at row) (:lesson_date row)))
+                              #(compare %2 %1))
                      vec)]
     (json-response grouped)))
 
@@ -553,7 +565,15 @@
   "Return a JSON array with the most recent sessions across any play context"
   []
   (->> (recent-sessions/fetch-recent-sessions-from recent-sessions/db-store 5)
-       (map (fn [row] (clojure.core/update row :session_date str)))
+       (map (fn [row]
+              (let [effective (or (:effective_minutes row)
+                                  (:actual_minutes row)
+                                  (:minimum_minutes row))]
+                (-> row
+                    (assoc :effective_minutes effective)
+                    (clojure.core/update :session_date str)
+                    (clojure.core/update :session_created_at (fn [value]
+                                                               (when value (str value))))))))
        vec
        json-response))
 
@@ -921,6 +941,14 @@
               :results)]
     (json-response (vec rows))))
 
+(defn sessions-by-year
+  "Return yearly session counts and minimum/actual minutes across all sessions"
+  []
+  (let [rows (exec-raw
+              ["select extract(year from session_date)::int as year,\n                      count(*)::int as sessions,\n                      coalesce(sum(minimum_minutes)::int, 0) as minimum_minutes,\n                      coalesce(sum(actual_minutes)::int, 0) as actual_minutes,\n                      coalesce(sum(effective_minutes)::int, 0) as effective_minutes,\n                      coalesce(sum(case\n                                     when session_type in ('solo_practice', 'singing_lesson') then effective_minutes\n                                     else 0\n                                   end)::int, 0) as practice_minutes,\n                      coalesce(sum(case\n                                     when session_type = 'performance' then effective_minutes\n                                     else 0\n                                   end)::int, 0) as performance_minutes\n               from view_recent_sessions\n               group by year\n               order by year desc"]
+              :results)]
+    (json-response (vec rows))))
+
 (defn stringify
   [date]
   (first (s/split (str date) #"\.")))
@@ -1007,6 +1035,7 @@
   (GET "/visualiser" [] (visualiser))
   (GET "/last-gig-date" [] (last-gig-date))
   (GET "/live-gigs-by-year" [] (live-gigs-by-year))
+  (GET "/sessions-by-year" [] (sessions-by-year))
   (GET "/normalised-count-per-day" [] (json-response (all-dates-and-seconds-normalised)))
   (POST "/create-performance" request (create-performance request))
   (POST "/create-venue" request (create-venue request))

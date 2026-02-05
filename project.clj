@@ -12,7 +12,8 @@
                  [clj-time "0.14.2"]
                  [ring-logger "1.0.1"]]
 
-  :plugins [[lein-ring "0.12.5"]]
+  :plugins [[lein-ring "0.12.5"]
+            [lein-cloverage "1.2.4"]]
   :ring {:handler manul-backend.handler/app
          :host "0.0.0.0"
          :port 3000

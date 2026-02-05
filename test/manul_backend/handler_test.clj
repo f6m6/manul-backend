@@ -265,6 +265,73 @@
       (is (= 404 (:status response)))
       (is (re-find #"performance not found" (:body response))))))
 
+(deftest update-performance-defaults-gig-type-when-omitted
+  (let [performance-update (atom nil)]
+    (with-redefs [korma/exec-raw (fn [& args]
+                                   (let [[sql params] (if (vector? (first args))
+                                                       (first args)
+                                                       (second args))]
+                                     (when (re-find #"update performances" sql)
+                                       (reset! performance-update {:sql sql :params params}))
+                                     [{:id 1
+                                       :performancedate "2026-02-01"
+                                       :venue "The Place"
+                                       :free false
+                                       :openmic true
+                                       :fee_micro_gbp 0
+                                       :gig_type :open_mic}]))]
+      (let [body (json/write-str {:venue "The Place" :date "2026-02-01"})
+            response (update-performance "1" (-> (mock/request :put "/performances/1" body)
+                                                (mock/content-type "application/json")))]
+        (is (= 200 (:status response)))
+        (is (= true (nth (:params @performance-update) 2)))
+        (is (= true (nth (:params @performance-update) 3)))
+        (is (= "open_mic" (nth (:params @performance-update) 5)))))))
+
+(deftest update-performance-non-numeric-id-throws
+  (let [body (json/write-str {:venue "The Place" :date "2026-02-01" :gig_type "open_mic"})]
+    (is (thrown? NumberFormatException
+                 (update-performance "abc" (-> (mock/request :put "/performances/abc" body)
+                                              (mock/content-type "application/json")))))))
+
+(deftest album-tracks-non-numeric-id-throws
+  (is (thrown? NumberFormatException (album-tracks "abc"))))
+
+(deftest create-song-invalid-json-throws
+  (is (thrown? Exception
+               (create-song (-> (mock/request :post "/create-song" "{")
+                                (mock/content-type "application/json"))))))
+
+(deftest update-song-defaults-boolean-flags-when-omitted
+  (let [song-update (atom nil)]
+    (with-redefs [with-transaction (fn [f] (f))
+                  korma/exec-raw (fn [& args]
+                                   (let [[sql params] (if (vector? (first args))
+                                                       (first args)
+                                                       (second args))]
+                                     (cond
+                                       (re-find #"update songs" sql) (do
+                                                                       (reset! song-update {:sql sql :params params})
+                                                                       [{:title "Song A"
+                                                                         :cover false
+                                                                         :active true
+                                                                         :key nil
+                                                                         :length nil
+                                                                         :instrumental false
+                                                                         :artist nil
+                                                                         :bpm nil
+                                                                         :recorded_key nil
+                                                                         :my_live_key nil
+                                                                         :capo nil}])
+                                       :else :ok)))]
+      (let [body (json/write-str {:artist "Artist"})
+            response (update-song "Song A" (-> (mock/request :put "/songs/Song%20A" body)
+                                               (mock/content-type "application/json")))]
+        (is (= 200 (:status response)))
+        (is (= false (nth (:params @song-update) 0)))
+        (is (= true (nth (:params @song-update) 1)))
+        (is (= false (nth (:params @song-update) 4)))))))
+
 (deftest create-venue-requires-name
   (let [response (app (-> (mock/request :post "/create-venue" "{}")
                           (mock/content-type "application/json")))]
@@ -756,16 +823,19 @@
 
 (deftest recent-sessions-uses-store
   (let [captured (atom nil)
-        session-date (java.sql.Date/valueOf "2026-02-01")]
+        session-date (java.sql.Date/valueOf "2026-02-01")
+        session-created (java.sql.Timestamp/valueOf "2026-02-01 09:15:00")]
     (with-redefs [recent-sessions/fetch-recent-sessions-from
                   (fn [store limit]
                     (reset! captured {:store store :limit limit})
                     [{:session_type "solo_practice"
                       :session_id 7
                       :session_date session-date
+                      :session_created_at session-created
                       :session_label nil
                       :song_count 3
-                      :estimated_minutes 25}])]
+                      :minimum_minutes 25
+                      :actual_minutes 30}])]
       (let [response (recent-sessions)
             body (json/read-str (:body response) :key-fn keyword)]
         (is (= 200 (:status response)))
@@ -774,8 +844,11 @@
         (is (= "solo_practice" (:session_type (first body))))
         (is (= 7 (:session_id (first body))))
         (is (= "2026-02-01" (:session_date (first body))))
+        (is (= "2026-02-01 09:15:00.0" (:session_created_at (first body))))
         (is (= 3 (:song_count (first body))))
-        (is (= 25 (:estimated_minutes (first body))))))))
+        (is (= 25 (:minimum_minutes (first body))))
+        (is (= 30 (:actual_minutes (first body))))
+        (is (= 30 (:effective_minutes (first body))))))))
 
 (deftest update-practice-session-returns-404-when-missing
   (with-redefs [with-transaction (fn [f] (f))
@@ -1106,6 +1179,47 @@
       (live-gigs-by-year)
       (is (re-find #"from performances" @captured))
       (is (not (re-find #"\\+\\s*left join" @captured))))))
+
+(deftest sessions-by-year-returns-stats
+  (with-redefs [korma/exec-raw (fn [& _]
+                                 [{:year 2026
+                                   :sessions 4
+                                   :minimum_minutes 300
+                                   :actual_minutes 420
+                                   :effective_minutes 420
+                                   :practice_minutes 240
+                                   :performance_minutes 180}
+                                  {:year 2025
+                                   :sessions 2
+                                   :minimum_minutes 120
+                                   :actual_minutes 90
+                                   :effective_minutes 120
+                                   :practice_minutes 120
+                                   :performance_minutes 0}])]
+    (let [response (sessions-by-year)
+          body (json/read-str (:body response) :key-fn keyword)]
+      (is (= 2 (count body)))
+      (is (= {:year 2026
+              :sessions 4
+              :minimum_minutes 300
+              :actual_minutes 420
+              :effective_minutes 420
+              :practice_minutes 240
+              :performance_minutes 180}
+             (first body))))))
+
+(deftest sessions-by-year-uses-recent-sessions-view
+  (let [captured (atom nil)]
+    (with-redefs [korma/exec-raw (fn [& args]
+                                   (let [[sql] (if (vector? (first args))
+                                                 (first args)
+                                                 (second args))]
+                                     (reset! captured sql)
+                                     []))]
+      (sessions-by-year)
+      (is (re-find #"from view_recent_sessions" @captured))
+      (is (re-find #"group by year" @captured))
+      (is (re-find #"order by year desc" @captured)))))
 
 (deftest replace-performance-setlist-validates-songs
   (let [body (json/write-str {:songs ["Song A" ""]})
