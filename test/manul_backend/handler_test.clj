@@ -5,6 +5,8 @@
             [korma.core :as korma]
             [manul-backend.data.recent-sessions :as recent-sessions]
             [manul-backend.data.song-plays :as song-plays]
+            [manul-backend.data.direct-fan-outreach :as direct-fan-outreach]
+            [manul-backend.data.home-x-goals :as home-x-goals]
             [manul-backend.handler :refer :all]))
 
 (deftest create-performance-requires-venue-and-songs
@@ -1158,6 +1160,157 @@
                                                (mock/content-type "application/json")))]
       (is (= 404 (:status response)))
       (is (re-find #"venue not found" (:body response))))))
+
+(deftest london-heatmap-returns-points-and-unresolved
+  (with-redefs [korma/exec-raw (fn [& _]
+                                 [{:venuename "Leicester Square (North West), Westminster, London"
+                                   :postcode nil
+                                   :gig_count 4}
+                                  {:venuename "St Martin's Church, Westminster, London"
+                                   :postcode nil
+                                   :gig_count 2}
+                                  {:venuename "The Place"
+                                   :postcode "AB12 3CD"
+                                   :gig_count 9}
+                                  {:venuename "Trafalgar Square"
+                                   :postcode "WC2N 5DN"
+                                   :gig_count 3}])
+                geocode-query (fn [query]
+                                (case query
+                                  "Leicester Square (North West), Westminster, London" {:lat 51.51 :lng -0.13}
+                                  "WC2N 5DN" {:lat 51.50 :lng -0.12}
+                                  nil))]
+    (let [response (london-heatmap)
+          body (json/read-str (:body response) :key-fn keyword)]
+      (is (= 200 (:status response)))
+      (is (= 2 (count (:points body))))
+      (is (= 1 (count (:unresolved body))))
+      (is (= "Leicester Square (North West), Westminster, London" (:name (first (:points body)))))
+      (is (= 4 (:count (first (:points body)))))
+      (is (= 4 (:intensity (first (:points body)))))
+      (is (= ["St Martin's Church, Westminster, London"] (:unresolved body))))))
+
+(deftest london-heatmap-route-available
+  (with-redefs [korma/exec-raw (fn [& _] [])
+                geocode-query (fn [_] nil)]
+    (let [response (app (mock/request :get "/london-heatmap"))]
+      (is (= 200 (:status response))))))
+
+(deftest home-x-returns-summary-metrics
+  (with-redefs [korma/exec-raw (fn [& args]
+                                 (let [[sql] (if (vector? (first args))
+                                               (first args)
+                                               (second args))]
+                                   (cond
+                                     (re-find #"from performances p" sql)
+                                     [{:gigs_ytd 3
+                                       :gigs_lifetime 83
+                                       :practice_minutes_ytd 318
+                                       :practice_minutes_lifetime 2400
+                                       :songs_performed_live_ytd 12
+                                       :songs_performed_live_lifetime 57
+                                       :sessions_ytd 10}]
+                                     (re-find #"from view_next_songs_to_perform_live" sql)
+                                     [{:song_id "Song A"}
+                                      {:song_id "Song B"}
+                                      {:song_id "Song C"}]
+                                     :else [])))
+                direct-fan-outreach/fetch-direct-fan-outreach-from (fn [_]
+                                                                     {:mailchimp_campaigns_sent 12
+                                                                      :mailchimp_campaigns_sent_ytd 3
+                                                                      :tiktok_posts 37
+                                                                      :tiktok_posts_ytd 0
+                                                                      :direct_fan_outreach_total 49
+                                                                      :direct_fan_outreach_ytd 3})
+                home-x-goals/fetch-home-x-goals-from (fn [_]
+                                                       {:gigs_lifetime 200
+                                                        :practice_hours_lifetime 2000
+                                                        :originals_live_lifetime 120
+                                                        :direct_outreach_lifetime 3000})]
+    (let [response (home-x)
+          body (json/read-str (:body response) :key-fn keyword)]
+      (is (= 200 (:status response)))
+      (is (= 3 (get-in body [:metrics :gigs_ytd])))
+      (is (= 83 (get-in body [:metrics :gigs_lifetime])))
+      (is (= 318 (get-in body [:metrics :practice_minutes_ytd])))
+      (is (= 2400 (get-in body [:metrics :practice_minutes_lifetime])))
+      (is (= 12 (get-in body [:metrics :songs_performed_live_ytd])))
+      (is (= 57 (get-in body [:metrics :songs_performed_live_lifetime])))
+      (is (= 10 (get-in body [:metrics :sessions_ytd])))
+      (is (= 12 (get-in body [:metrics :mailchimp_campaigns_sent])))
+      (is (= 3 (get-in body [:metrics :mailchimp_campaigns_sent_ytd])))
+      (is (= 37 (get-in body [:metrics :tiktok_posts])))
+      (is (= 0 (get-in body [:metrics :tiktok_posts_ytd])))
+      (is (= 49 (get-in body [:metrics :direct_fan_outreach_total])))
+      (is (= 3 (get-in body [:metrics :direct_fan_outreach_ytd])))
+      (is (= 200 (get-in body [:goals :gigs_lifetime])))
+      (is (= 2000 (get-in body [:goals :practice_hours_lifetime])))
+      (is (= 120 (get-in body [:goals :originals_live_lifetime])))
+      (is (= 3000 (get-in body [:goals :direct_outreach_lifetime])))
+      (is (= ["Song A" "Song B" "Song C"] (:focus_songs body))))))
+
+(deftest home-x-route-available
+  (with-redefs [korma/exec-raw (fn [& _] [])
+                direct-fan-outreach/fetch-direct-fan-outreach-from (fn [_]
+                                                                     {:mailchimp_campaigns_sent 0
+                                                                      :mailchimp_campaigns_sent_ytd 0
+                                                                      :tiktok_posts 0
+                                                                      :tiktok_posts_ytd 0
+                                                                      :direct_fan_outreach_total 0
+                                                                      :direct_fan_outreach_ytd 0})
+                home-x-goals/fetch-home-x-goals-from (fn [_]
+                                                       {:gigs_lifetime 200
+                                                        :practice_hours_lifetime 2000
+                                                        :originals_live_lifetime 120
+                                                        :direct_outreach_lifetime 3000})]
+    (let [response (app (mock/request :get "/home-x"))]
+      (is (= 200 (:status response))))))
+
+(deftest home-x-local-route-available
+  (with-redefs [korma/exec-raw (fn [& _] [])
+                home-x-goals/fetch-home-x-goals-from (fn [_]
+                                                       {:gigs_lifetime 200
+                                                        :practice_hours_lifetime 2000
+                                                        :originals_live_lifetime 120
+                                                        :direct_outreach_lifetime 3000})]
+    (let [response (app (mock/request :get "/home-x/local"))]
+      (is (= 200 (:status response))))))
+
+(deftest home-x-outreach-route-available
+  (with-redefs [direct-fan-outreach/fetch-direct-fan-outreach-from (fn [_]
+                                                                     {:mailchimp_campaigns_sent 0
+                                                                      :mailchimp_campaigns_sent_ytd 0
+                                                                      :tiktok_posts 0
+                                                                      :tiktok_posts_ytd 0
+                                                                      :direct_fan_outreach_total 0
+                                                                      :direct_fan_outreach_ytd 0})]
+    (let [response (app (mock/request :get "/home-x/outreach"))]
+      (is (= 200 (:status response))))))
+
+(deftest update-home-x-goal-updates-known-goal
+  (with-redefs [home-x-goals/update-home-x-goal-from (fn [_ goal-key target]
+                                                       {:goal_key goal-key :target_value target})]
+    (let [body (json/write-str {:target 3500})
+          response (app (-> (mock/request :put "/home-x-goals/direct_outreach_lifetime" body)
+                            (mock/content-type "application/json")))
+          response-body (json/read-str (:body response) :key-fn keyword)]
+      (is (= 200 (:status response)))
+      (is (= "direct_outreach_lifetime" (:goal_key response-body)))
+      (is (= 3500 (:target_value response-body))))))
+
+(deftest update-home-x-goal-rejects-unknown-goal
+  (let [body (json/write-str {:target 10})
+        response (app (-> (mock/request :put "/home-x-goals/not_a_goal" body)
+                          (mock/content-type "application/json")))]
+    (is (= 400 (:status response)))
+    (is (re-find #"goal key is invalid" (:body response)))))
+
+(deftest update-home-x-goal-rejects-invalid-target
+  (let [body (json/write-str {:target "abc"})
+        response (app (-> (mock/request :put "/home-x-goals/gigs_lifetime" body)
+                          (mock/content-type "application/json")))]
+    (is (= 400 (:status response)))
+    (is (re-find #"target is invalid" (:body response)))))
 
 (deftest live-gigs-by-year-returns-stats
   (with-redefs [korma/exec-raw (fn [& _]

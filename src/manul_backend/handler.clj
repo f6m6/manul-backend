@@ -4,13 +4,16 @@
             [ring.middleware.defaults :refer [wrap-defaults site-defaults]]
             [clojure.string :as s]
             [clojure.data.json :as json]
+            [clojure.java.io :as io]
             [clj-time.core :as time]
             [clj-time.format :as f]
             [ring.middleware.cors :refer [wrap-cors]]
             [ring.util.response :as resp]
             [clojure.java.jdbc :as jdbc]
             [manul-backend.data.recent-sessions :as recent-sessions]
-            [manul-backend.data.song-plays :as song-plays]))
+            [manul-backend.data.song-plays :as song-plays]
+            [manul-backend.data.direct-fan-outreach :as direct-fan-outreach]
+            [manul-backend.data.home-x-goals :as home-x-goals]))
 
 (use 'korma.db)
 (use 'korma.core)
@@ -93,6 +96,7 @@
 (defentity view_song_practice_counts)
 
 (def gig-types #{"open_mic" "booked" "busking" "showcase" "private_party"})
+(def home-x-goal-keys #{"gigs_lifetime" "practice_hours_lifetime" "originals_live_lifetime" "direct_outreach_lifetime"})
 
 (defn normalize-gig-type
   [gig-type]
@@ -409,6 +413,66 @@
        vec
        json-response))
 
+(def london-postcode-pattern #"^(E|EC|N|NW|SE|SW|W|WC)\d")
+
+(defonce geocode-cache (atom {}))
+
+(defn london-postcode?
+  [postcode]
+  (boolean (re-find london-postcode-pattern (s/upper-case (or postcode "")))))
+
+(defn geocode-query
+  [query]
+  (when (and query (not (s/blank? query)))
+    (if (contains? @geocode-cache query)
+      (get @geocode-cache query)
+      (let [url (str "https://nominatim.openstreetmap.org/search?format=json&limit=1&q="
+                     (java.net.URLEncoder/encode query "UTF-8"))
+            conn (.openConnection (java.net.URL. url))]
+        (.setRequestProperty conn "User-Agent" "manul-backend/1.0")
+        (let [result (with-open [r (io/reader (.getInputStream conn))]
+                       (let [rows (json/read r :key-fn keyword)
+                             row (first rows)]
+                         (when row
+                           {:lat (Double/parseDouble (str (:lat row)))
+                            :lng (Double/parseDouble (str (:lon row)))})))]
+          (swap! geocode-cache assoc query result)
+          result)))))
+
+(defn london-heatmap
+  []
+  (try
+    (let [rows (exec-raw
+                ["select v.venuename, v.postcode, count(p.id) as gig_count
+                  from performances p
+                  join venues v on v.venuename = p.venue
+                  group by v.venuename, v.postcode
+                  order by count(p.id) desc, v.venuename asc"]
+                :results)
+          filtered (filter (fn [{:keys [venuename postcode]}]
+                             (or (london-postcode? postcode)
+                                 (re-find #"\bLondon\b" (or venuename ""))))
+                           rows)
+          payload (reduce (fn [acc {:keys [venuename postcode gig_count]}]
+                            (let [count* (int (or gig_count 0))
+                                  query (if (london-postcode? postcode) postcode venuename)
+                                  geo (try
+                                        (geocode-query query)
+                                        (catch Exception _ nil))]
+                              (if geo
+                                (clojure.core/update acc :points conj {:name venuename
+                                                                       :count count*
+                                                                       :lat (:lat geo)
+                                                                       :lng (:lng geo)
+                                                                       :intensity (min count* 10)})
+                                (clojure.core/update acc :unresolved conj venuename))))
+                          {:points [] :unresolved []}
+                          filtered)]
+      (json-response payload))
+    (catch Exception e
+      (-> (json-response {:error (or (.getMessage e) "Failed to load heatmap")})
+          (resp/status 500)))))
+
 (defn all-albums
   "List all albums"
   []
@@ -576,6 +640,110 @@
                                                                (when value (str value))))))))
        vec
        json-response))
+
+(defn home-x-local-data
+  []
+  (let [metrics-row (first
+                     (exec-raw
+                      ["with year_start as (
+                          select date_trunc('year', current_date)::date as d
+                        )
+                        select
+                          (select count(*)
+                           from performances p
+                           where p.performancedate >= (select d from year_start))::int as gigs_ytd,
+                          (select count(*) from performances)::int as gigs_lifetime,
+                          coalesce((select sum(coalesce(vrs.effective_minutes, 0))
+                                    from view_recent_sessions vrs
+                                    where vrs.session_date >= (select d from year_start)
+                                      and vrs.session_type in ('solo_practice', 'singing_lesson')), 0)::int as practice_minutes_ytd,
+                          coalesce((select sum(coalesce(vrs.effective_minutes, 0))
+                                    from view_recent_sessions vrs
+                                    where vrs.session_type in ('solo_practice', 'singing_lesson')), 0)::int as practice_minutes_lifetime,
+                          coalesce((select count(sp.song_id)
+                                    from song_performances sp
+                                    join performances p on p.id = sp.performance_id
+                                    join songs s on s.title = sp.song_id
+                                    where p.performancedate >= (select d from year_start)
+                                      and s.artist = 'Farhan Mannan'), 0)::int as songs_performed_live_ytd,
+                          coalesce((select count(sp.song_id)
+                                    from song_performances sp
+                                    join performances p on p.id = sp.performance_id
+                                    join songs s on s.title = sp.song_id
+                                    where s.artist = 'Farhan Mannan'), 0)::int as songs_performed_live_lifetime,
+                          coalesce((select count(*)
+                                    from view_recent_sessions vrs
+                                    where vrs.session_date >= (select d from year_start)), 0)::int as sessions_ytd"]
+                      :results))
+        focus-songs (->> (exec-raw
+                          ["select v.song_id
+                            from view_next_songs_to_perform_live v
+                            join songs s on s.title = v.song_id
+                            where s.artist = 'Farhan Mannan'
+                            order by v.count asc, v.song_id asc
+                            limit 3"]
+                          :results)
+                         (map :song_id)
+                         vec)
+        goals (try
+                (home-x-goals/fetch-home-x-goals-from home-x-goals/db-store)
+                (catch Exception _
+                  home-x-goals/default-goals))]
+    {:metrics {:gigs_ytd (:gigs_ytd metrics-row)
+               :gigs_lifetime (:gigs_lifetime metrics-row)
+               :practice_minutes_ytd (:practice_minutes_ytd metrics-row)
+               :practice_minutes_lifetime (:practice_minutes_lifetime metrics-row)
+               :songs_performed_live_ytd (:songs_performed_live_ytd metrics-row)
+               :songs_performed_live_lifetime (:songs_performed_live_lifetime metrics-row)
+               :sessions_ytd (:sessions_ytd metrics-row)}
+     :goals goals
+     :focus_songs focus-songs}))
+
+(defn home-x-outreach-data
+  []
+  (try
+    (direct-fan-outreach/fetch-direct-fan-outreach-from direct-fan-outreach/db-store)
+    (catch Exception _
+      {:mailchimp_campaigns_sent 0
+       :mailchimp_campaigns_sent_ytd 0
+       :tiktok_posts 0
+       :tiktok_posts_ytd 0
+       :direct_fan_outreach_total 0
+       :direct_fan_outreach_ytd 0})))
+
+(defn home-x-local
+  []
+  (json-response (home-x-local-data)))
+
+(defn home-x-outreach
+  []
+  (json-response (home-x-outreach-data)))
+
+(defn home-x
+  "Return combined Home-X payload (local + outreach)."
+  []
+  (let [local (home-x-local-data)
+        outreach (home-x-outreach-data)]
+    (json-response (clojure.core/update local :metrics merge outreach))))
+
+(defn update-home-x-goal
+  [goal-key request]
+  (let [{:keys [target]} (json-read request)
+        parsed-target (parse-int-field target)]
+    (cond
+      (not (home-x-goal-keys goal-key))
+      (-> (json-response {:error "goal key is invalid"})
+          (resp/status 400))
+      (= parsed-target ::invalid)
+      (-> (json-response {:error "target is invalid"})
+          (resp/status 400))
+      (or (nil? parsed-target) (<= parsed-target 0))
+      (-> (json-response {:error "target is invalid"})
+          (resp/status 400))
+      :else
+      (let [row (home-x-goals/update-home-x-goal-from home-x-goals/db-store goal-key parsed-target)]
+        (json-response {:goal_key (:goal_key row)
+                        :target_value (:target_value row)})))))
 
 (defn create-performance
   "Create a performance and its song_performances rows"
@@ -1006,6 +1174,10 @@
   (GET "/next-songs-to-play" [] (next-songs-to-perform-live))
   (GET "/next-songs-to-perform-live" [] (next-songs-to-perform-live))
   (GET "/next-songs-to-practise" [] (next-songs-to-practise))
+  (GET "/home-x/local" [] (home-x-local))
+  (GET "/home-x/outreach" [] (home-x-outreach))
+  (GET "/home-x" [] (home-x))
+  (PUT "/home-x-goals/:goal-key" [goal-key :as request] (update-home-x-goal goal-key request))
   (GET "/recent-sessions" [] (recent-sessions))
   (GET "/next-active-songs" [] (next-active-songs))
   (GET "/performances" [] (all-performances))
@@ -1027,6 +1199,7 @@
   (GET "/albums" [] (all-albums))
   (GET "/albums/:id/tracks" [id] (album-tracks id))
   (GET "/venues" [] (all-venues))
+  (GET "/london-heatmap" [] (london-heatmap))
   (PUT "/venues/:venuename" [venuename :as request] (update-venue venuename request))
   (DELETE "/venues/:venuename" [venuename] (delete-venue venuename))
   (GET "/view-song-plays" [] (view-song-plays))
