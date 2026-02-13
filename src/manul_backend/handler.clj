@@ -630,7 +630,7 @@
        json-response))
 
 (defn recent-sessions
-  "Return a JSON array with the most recent sessions across any play context"
+  "Return a JSON array with the 5 most recent sessions by session date."
   []
   (->> (recent-sessions/fetch-recent-sessions-from recent-sessions/db-store 5)
        (map (fn [row]

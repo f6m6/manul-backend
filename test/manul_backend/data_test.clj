@@ -4,7 +4,7 @@
             [manul-backend.data.song-plays :as song-plays]
             [korma.core :as korma]))
 
-(deftest fetch-recent-sessions-from-orders-by-created-at
+(deftest fetch-recent-sessions-from-orders-by-session-date
   (let [captured (atom nil)]
     (with-redefs [korma/exec-raw (fn [& args]
                                    (let [[sql params] (if (vector? (first args))
@@ -22,7 +22,7 @@
       (let [rows (recent-sessions/fetch-recent-sessions-from recent-sessions/db-store 5)]
         (is (= 5 (first (:params @captured))))
         (is (re-find #"from view_recent_sessions" (:sql @captured)))
-        (is (re-find #"order by session_created_at desc" (:sql @captured)))
+        (is (re-find #"order by session_date desc, session_created_at desc" (:sql @captured)))
         (is (= 1 (:session_id (first rows))))))))
 
 (deftest fetch-next-songs-to-play-anywhere-uses-view
