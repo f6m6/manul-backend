@@ -83,6 +83,7 @@
 (defentity view_next_songs_to_practise)
 (defentity session_types)
 (defentity songs)
+(defentity instruments)
 (defentity view_song_plays)
 (defentity view_songs_per_date)
 (defentity next_song)
@@ -248,7 +249,7 @@
                      (string? entry) {:title entry :minutes nil}
                      (map? entry) {:title (:title entry)
                                     :minutes (:minutes entry)
-                                    :instrument (or (:instrument entry) (:instrument_name entry))
+                                    :instrument_id (:instrument_id entry)
                                     :vocal_mode (or (:vocal_mode entry) (:vocal_mode_code entry))
                                     :capo_position (or (:capo_position entry) (:capo entry))
                                     :used_metronome (:used_metronome entry)
@@ -258,7 +259,7 @@
                      :else nil)]
     (when normalized
       (let [title (trim-or-nil (:title normalized))
-            instrument (trim-or-nil (:instrument normalized))
+            instrument-id (parse-int-field (:instrument_id normalized))
             vocal-mode (trim-or-nil (:vocal_mode normalized))
             capo-position (parse-capo-position (:capo_position normalized))
             used-metronome (parse-bool-field (:used_metronome normalized))
@@ -266,6 +267,7 @@
             key-changes (parse-string-list-field (:key_changes normalized))
             notes (trim-or-nil (:notes normalized))]
         (if (or (nil? title)
+                (= instrument-id ::invalid)
                 (= capo-position ::invalid)
                 (= used-metronome ::invalid)
                 (= metronome-bpms ::invalid)
@@ -274,7 +276,7 @@
           ::invalid
           {:title title
            :minutes (:minutes normalized)
-           :instrument instrument
+           :instrument_id instrument-id
            :vocal_mode vocal-mode
            :capo_position capo-position
            :used_metronome used-metronome
@@ -284,7 +286,7 @@
 
 (defn practice-song-metadata-present?
   [song]
-  (or (:instrument song)
+  (or (:instrument_id song)
       (:vocal_mode song)
       (some? (:capo_position song))
       (some? (:used_metronome song))
@@ -292,16 +294,15 @@
       (seq (:key_changes song))
       (:notes song)))
 
-(defn resolve-instrument-id
-  [instrument-name]
-  (when instrument-name
+(defn instrument-exists?
+  [instrument-id]
+  (if (nil? instrument-id)
+    true
     (let [rows (exec-raw
-                ["insert into instruments (name) values (?)
-                  on conflict (name) do update set name = excluded.name
-                  returning id"
-                 [instrument-name]]
+                ["select id from instruments where id = ?"
+                 [instrument-id]]
                 :results)]
-      (:id (first rows)))))
+      (boolean (first rows)))))
 
 (defn resolve-practice-vocal-mode-id
   [vocal-mode-code]
@@ -315,8 +316,10 @@
 (defn insert-practice-song-metadata!
   [session-id song]
   (when (practice-song-metadata-present? song)
-    (let [instrument-id (resolve-instrument-id (:instrument song))
+    (let [instrument-id (:instrument_id song)
           vocal-mode-id (resolve-practice-vocal-mode-id (:vocal_mode song))]
+      (when (and instrument-id (not (instrument-exists? instrument-id)))
+        (throw (ex-info "instrument is invalid" {})))
       (when (and (:vocal_mode song) (nil? vocal-mode-id))
         (throw (ex-info "vocal mode is invalid" {})))
       (exec-raw
@@ -491,7 +494,7 @@
   "List practice sessions with nested songs"
   []
   (let [rows (exec-raw
-              ["select ps.id, ps.practiced_on, ps.created_at, ps.total_minutes,\n                      pss.position, pss.song_id, pss.song_title, pss.minutes, s.length,\n                      i.name as instrument_name,\n                      pvm.code as vocal_mode_code,\n                      psd.capo_position,\n                      psd.used_metronome,\n                      psd.notes,\n                      coalesce((\n                        select json_agg(pst.bpm order by pst.ordinal)\n                        from practice_song_tempos pst\n                        where pst.practice_session_id = pss.practice_session_id\n                          and pst.song_title = pss.song_title\n                      ), '[]'::json) as metronome_bpms_json,\n                      coalesce((\n                        select json_agg(psk.key_name order by psk.ordinal)\n                        from practice_song_keys psk\n                        where psk.practice_session_id = pss.practice_session_id\n                          and psk.song_title = pss.song_title\n                      ), '[]'::json) as key_changes_json\n               from practice_sessions ps\n               left join practice_session_songs pss on pss.practice_session_id = ps.id\n               left join songs s on s.title = pss.song_id\n               left join practice_song_details psd\n                 on psd.practice_session_id = pss.practice_session_id\n                and psd.song_title = pss.song_title\n               left join instruments i on i.id = psd.instrument_id\n               left join practice_vocal_modes pvm on pvm.id = psd.vocal_mode_id\n               order by ps.created_at desc, ps.id desc, pss.position asc"]
+              ["select ps.id, ps.practiced_on, ps.created_at, ps.total_minutes,\n                      pss.position, pss.song_id, pss.song_title, pss.minutes, s.length,\n                      psd.instrument_id,\n                      i.name as instrument_name,\n                      pvm.code as vocal_mode_code,\n                      psd.capo_position,\n                      psd.used_metronome,\n                      psd.notes,\n                      coalesce((\n                        select json_agg(pst.bpm order by pst.ordinal)\n                        from practice_song_tempos pst\n                        where pst.practice_session_id = pss.practice_session_id\n                          and pst.song_title = pss.song_title\n                      ), '[]'::json) as metronome_bpms_json,\n                      coalesce((\n                        select json_agg(psk.key_name order by psk.ordinal)\n                        from practice_song_keys psk\n                        where psk.practice_session_id = pss.practice_session_id\n                          and psk.song_title = pss.song_title\n                      ), '[]'::json) as key_changes_json\n               from practice_sessions ps\n               left join practice_session_songs pss on pss.practice_session_id = ps.id\n               left join songs s on s.title = pss.song_id\n               left join practice_song_details psd\n                 on psd.practice_session_id = pss.practice_session_id\n                and psd.song_title = pss.song_title\n               left join instruments i on i.id = psd.instrument_id\n               left join practice_vocal_modes pvm on pvm.id = psd.vocal_mode_id\n               order by ps.created_at desc, ps.id desc, pss.position asc"]
               :results)
         grouped (->> rows
                      (group-by :id)
@@ -503,6 +506,7 @@
                                                     {:position (:position row)
                                                      :title (:song_title row)
                                                      :minutes (:minutes row)
+                                                     :instrument_id (:instrument_id row)
                                                      :instrument (:instrument_name row)
                                                      :vocal_mode (:vocal_mode_code row)
                                                      :capo_position (:capo_position row)
@@ -639,6 +643,89 @@
   (->> (select venues (fields :venuename :postcode))
        vec
        json-response))
+
+(defn all-instruments
+  "List all instruments"
+  []
+  (let [rows (exec-raw
+              ["select id, name, manufacturer, model, family, arrange_category, competence, next_step
+                from instruments
+                order by name asc"]
+              :results)]
+    (json-response (vec rows))))
+
+(defn create-instrument
+  "Create an instrument"
+  [request]
+  (let [{:keys [name manufacturer model family arrange_category competence next_step]} (json-read request)
+        trimmed-name (trim-or-nil name)]
+    (if (nil? trimmed-name)
+      (-> (json-response {:error "name is required"})
+          (resp/status 400))
+      (let [rows (exec-raw
+                  ["insert into instruments (name, manufacturer, model, family, arrange_category, competence, next_step)
+                    values (?, ?, ?, ?, ?, ?, ?)
+                    on conflict (name) do update
+                      set manufacturer = excluded.manufacturer,
+                          model = excluded.model,
+                          family = excluded.family,
+                          arrange_category = excluded.arrange_category,
+                          competence = excluded.competence,
+                          next_step = excluded.next_step
+                    returning id, name, manufacturer, model, family, arrange_category, competence, next_step"
+                   [trimmed-name
+                    (trim-or-nil manufacturer)
+                    (trim-or-nil model)
+                    (trim-or-nil family)
+                    (trim-or-nil arrange_category)
+                    (trim-or-nil competence)
+                    (trim-or-nil next_step)]]
+                  :results)]
+        (json-response (first rows))))))
+
+(defn update-instrument
+  "Update an instrument"
+  [id request]
+  (let [{:keys [name manufacturer model family arrange_category competence next_step]} (json-read request)
+        trimmed-name (trim-or-nil name)]
+    (if (or (s/blank? id) (nil? trimmed-name))
+      (-> (json-response {:error "name is required"})
+          (resp/status 400))
+      (let [rows (exec-raw
+                  ["update instruments
+                    set name = ?, manufacturer = ?, model = ?, family = ?, arrange_category = ?, competence = ?, next_step = ?
+                    where id = ?
+                    returning id, name, manufacturer, model, family, arrange_category, competence, next_step"
+                   [trimmed-name
+                    (trim-or-nil manufacturer)
+                    (trim-or-nil model)
+                    (trim-or-nil family)
+                    (trim-or-nil arrange_category)
+                    (trim-or-nil competence)
+                    (trim-or-nil next_step)
+                    (Integer/parseInt id)]]
+                  :results)
+            row (first rows)]
+        (if row
+          (json-response row)
+          (-> (json-response {:error "instrument not found"})
+              (resp/status 404)))))))
+
+(defn delete-instrument
+  "Delete an instrument"
+  [id]
+  (if (s/blank? id)
+    (-> (json-response {:error "id is required"})
+        (resp/status 400))
+    (let [rows (exec-raw
+                ["delete from instruments where id = ? returning id"
+                 [(Integer/parseInt id)]]
+                :results)
+          row (first rows)]
+      (if row
+        (json-response {:id (:id row)})
+        (-> (json-response {:error "instrument not found"})
+            (resp/status 404))))))
 
 (def london-postcode-pattern #"^(E|EC|N|NW|SE|SW|W|WC)\d")
 
@@ -1067,20 +1154,24 @@
     (if (or (not (seq valid)) (not= (count valid) (count songs-list)))
       (-> (json-response {:error "songs are required"})
           (resp/status 400))
-      (with-transaction
-       (fn []
-         (let [rows (exec-raw
-                     ["insert into practice_sessions (practiced_on, total_minutes) values (?, ?) returning id"
-                      [(java.sql.Date/valueOf session-date) total_minutes]]
-                     :results)
-               session-id (normalize-id rows)]
-           (doseq [[idx song] (map-indexed vector valid)]
-             (exec-raw
-              ["insert into practice_session_songs (practice_session_id, song_id, song_title, position, minutes) values (?, ?, ?, ?, ?)"
-               [session-id (:title song) (:title song) (inc idx) (:minutes song)]])
-             (insert-practice-song-metadata! session-id song))
-           (json-response {:practiceSessionId session-id
-                           :songs (count valid)})))))))
+      (try
+        (with-transaction
+         (fn []
+           (let [rows (exec-raw
+                       ["insert into practice_sessions (practiced_on, total_minutes) values (?, ?) returning id"
+                        [(java.sql.Date/valueOf session-date) total_minutes]]
+                       :results)
+                 session-id (normalize-id rows)]
+             (doseq [[idx song] (map-indexed vector valid)]
+               (exec-raw
+                ["insert into practice_session_songs (practice_session_id, song_id, song_title, position, minutes) values (?, ?, ?, ?, ?)"
+                 [session-id (:title song) (:title song) (inc idx) (:minutes song)]])
+               (insert-practice-song-metadata! session-id song))
+             (json-response {:practiceSessionId session-id
+                             :songs (count valid)}))))
+        (catch clojure.lang.ExceptionInfo e
+          (-> (json-response {:error (.getMessage e)})
+              (resp/status 400)))))))
 
 (defn delete-practice-session
   "Delete a practice session and its songs"
@@ -1116,29 +1207,33 @@
       (if (or (not (seq valid)) (not= (count valid) (count songs-list)))
         (-> (json-response {:error "songs are required"})
             (resp/status 400))
-        (with-transaction
-         (fn []
-           (let [rows (exec-raw
-                       ["update practice_sessions set practiced_on = ?, total_minutes = ? where id = ? returning id, practiced_on, total_minutes"
-                        [(java.sql.Date/valueOf session-date) total_minutes (Integer/parseInt id)]]
-                       :results)
-                 row (first rows)]
-             (if (nil? row)
-               (-> (json-response {:error "practice session not found"})
-                   (resp/status 404))
-               (do
-                 (exec-raw
-                  ["delete from practice_session_songs where practice_session_id = ?"
-                   [(Integer/parseInt id)]])
-                 (doseq [[idx song] (map-indexed vector valid)]
+        (try
+          (with-transaction
+           (fn []
+             (let [rows (exec-raw
+                         ["update practice_sessions set practiced_on = ?, total_minutes = ? where id = ? returning id, practiced_on, total_minutes"
+                          [(java.sql.Date/valueOf session-date) total_minutes (Integer/parseInt id)]]
+                         :results)
+                   row (first rows)]
+               (if (nil? row)
+                 (-> (json-response {:error "practice session not found"})
+                     (resp/status 404))
+                 (do
                    (exec-raw
-                    ["insert into practice_session_songs (practice_session_id, song_id, song_title, position, minutes) values (?, ?, ?, ?, ?)"
-                     [(Integer/parseInt id) (:title song) (:title song) (inc idx) (:minutes song)]])
-                   (insert-practice-song-metadata! (Integer/parseInt id) song))
-                (json-response {:id (:id row)
-                                :practiced_on (str (:practiced_on row))
-                                :total_minutes (:total_minutes row)
-                                :songs (count valid)}))))))))))
+                    ["delete from practice_session_songs where practice_session_id = ?"
+                     [(Integer/parseInt id)]])
+                   (doseq [[idx song] (map-indexed vector valid)]
+                     (exec-raw
+                      ["insert into practice_session_songs (practice_session_id, song_id, song_title, position, minutes) values (?, ?, ?, ?, ?)"
+                       [(Integer/parseInt id) (:title song) (:title song) (inc idx) (:minutes song)]])
+                     (insert-practice-song-metadata! (Integer/parseInt id) song))
+                   (json-response {:id (:id row)
+                                   :practiced_on (str (:practiced_on row))
+                                   :total_minutes (:total_minutes row)
+                                   :songs (count valid)}))))))
+          (catch clojure.lang.ExceptionInfo e
+            (-> (json-response {:error (.getMessage e)})
+                (resp/status 400))))))))
 (defn update-performance
   "Update performance fields"
   [id request]
@@ -1487,6 +1582,10 @@
   (GET "/performances-with-setlists" [] (performances-with-setlists))
   (GET "/venues/:venuename/performances" [venuename]
        (venue-performances-with-setlists venuename))
+  (GET "/instruments" [] (all-instruments))
+  (POST "/instruments" request (create-instrument request))
+  (PUT "/instruments/:id" [id :as request] (update-instrument id request))
+  (DELETE "/instruments/:id" [id] (delete-instrument id))
   (GET "/practice-sessions" [] (practice-sessions-with-songs))
   (POST "/practice-sessions" request (create-practice-session request))
   (PUT "/practice-sessions/:id" [id :as request] (update-practice-session id request))

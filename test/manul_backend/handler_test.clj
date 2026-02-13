@@ -452,6 +452,7 @@
                                    :song_title "Song A"
                                    :minutes 10
                                    :length nil
+                                   :instrument_id 5
                                    :instrument_name "Maton"
                                    :vocal_mode_code "sing_and_play"
                                    :capo_position 2
@@ -470,10 +471,33 @@
           body (json/read-str (:body response) :key-fn keyword)]
       (is (= 1 (count body)))
       (is (= 8 (:estimated_time_minutes (first body))))
+      (is (= 5 (get-in body [0 :songs 0 :instrument_id])))
       (is (= "Maton" (get-in body [0 :songs 0 :instrument])))
       (is (= "sing_and_play" (get-in body [0 :songs 0 :vocal_mode])))
       (is (= [80 90] (get-in body [0 :songs 0 :metronome_bpms])))
       (is (= ["G" "A"] (get-in body [0 :songs 0 :key_changes]))))))
+
+(deftest instruments-routes-available
+  (with-redefs [korma/exec-raw (fn [& args]
+                                 (let [[sql params] (if (vector? (first args))
+                                                      (first args)
+                                                      (second args))]
+                                   (cond
+                                     (re-find #"select id, name" sql) [{:id 1 :name "Maton"}]
+                                     (re-find #"insert into instruments" sql) [{:id 2 :name "Taylor"}]
+                                     (re-find #"update instruments" sql) [{:id 2 :name "Updated Taylor"}]
+                                     (re-find #"delete from instruments" sql) [{:id (first params)}]
+                                     :else [])))]
+    (let [get-response (app (mock/request :get "/instruments"))
+          post-response (app (-> (mock/request :post "/instruments" (json/write-str {:name "Taylor"}))
+                                 (mock/content-type "application/json")))
+          put-response (app (-> (mock/request :put "/instruments/2" (json/write-str {:name "Updated Taylor"}))
+                                (mock/content-type "application/json")))
+          delete-response (app (mock/request :delete "/instruments/2"))]
+      (is (= 200 (:status get-response)))
+      (is (= 200 (:status post-response)))
+      (is (= 200 (:status put-response)))
+      (is (= 200 (:status delete-response))))))
 
 (deftest practice-sessions-query-has-no-plus
   (let [captured (atom nil)]
@@ -855,6 +879,23 @@
                                                 (mock/content-type "application/json")))]
       (is (= 400 (:status response)))
       (is (re-find #"songs are required" (:body response))))))
+
+(deftest create-practice-session-rejects-invalid-instrument-id
+  (with-redefs [with-transaction (fn [f] (f))
+                korma/exec-raw (fn [& args]
+                                 (let [[sql] (if (vector? (first args))
+                                               (first args)
+                                               (second args))]
+                                   (cond
+                                     (re-find #"insert into practice_sessions" sql) [{:id 7}]
+                                     (re-find #"select id from instruments where id =" sql) []
+                                     :else :ok)))]
+    (let [body (json/write-str {:date "2026-02-01"
+                                :songs [{:title "Song A" :instrument_id 999}]})
+          response (create-practice-session (-> (mock/request :post "/practice-sessions" body)
+                                                (mock/content-type "application/json")))]
+      (is (= 400 (:status response)))
+      (is (re-find #"instrument is invalid" (:body response))))))
 
 (deftest update-practice-session-requires-date
   (let [body (json/write-str {:date "" :songs ["Song A"]})
