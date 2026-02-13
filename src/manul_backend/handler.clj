@@ -189,6 +189,158 @@
           (Integer/parseInt trimmed)
           (catch NumberFormatException _ ::invalid))))))
 
+(defn parse-bool-field
+  [value]
+  (cond
+    (nil? value) nil
+    (instance? Boolean value) value
+    (string? value) (let [trimmed (s/lower-case (s/trim value))]
+                      (cond
+                        (= trimmed "true") true
+                        (= trimmed "false") false
+                        :else ::invalid))
+    :else ::invalid))
+
+(defn trim-or-nil
+  [value]
+  (when (some? value)
+    (let [trimmed (s/trim (str value))]
+      (when (not (s/blank? trimmed))
+        trimmed))))
+
+(defn parse-string-list-field
+  [value]
+  (cond
+    (nil? value) []
+    (vector? value)
+    (let [trimmed (map trim-or-nil value)]
+      (if (every? some? trimmed)
+        (vec trimmed)
+        ::invalid))
+    :else ::invalid))
+
+(defn parse-int-list-field
+  [value]
+  (cond
+    (nil? value) []
+    (vector? value)
+    (let [parsed (map parse-int-field value)]
+      (if (and (every? integer? parsed) (every? pos? parsed))
+        (vec parsed)
+        ::invalid))
+    :else ::invalid))
+
+(def valid-practice-vocal-modes
+  #{"instrumental_only" "sing_and_play" "sing_over_instrumental"})
+
+(defn parse-capo-position
+  [value]
+  (if (nil? value)
+    nil
+    (let [parsed (parse-int-field value)]
+      (if (or (= parsed ::invalid) (neg? parsed) (> parsed 24))
+        ::invalid
+        parsed))))
+
+(defn normalize-practice-song-entry
+  [entry]
+  (let [normalized (cond
+                     (string? entry) {:title entry :minutes nil}
+                     (map? entry) {:title (:title entry)
+                                    :minutes (:minutes entry)
+                                    :instrument (or (:instrument entry) (:instrument_name entry))
+                                    :vocal_mode (or (:vocal_mode entry) (:vocal_mode_code entry))
+                                    :capo_position (or (:capo_position entry) (:capo entry))
+                                    :used_metronome (:used_metronome entry)
+                                    :metronome_bpms (:metronome_bpms entry)
+                                    :key_changes (:key_changes entry)
+                                    :notes (:notes entry)}
+                     :else nil)]
+    (when normalized
+      (let [title (trim-or-nil (:title normalized))
+            instrument (trim-or-nil (:instrument normalized))
+            vocal-mode (trim-or-nil (:vocal_mode normalized))
+            capo-position (parse-capo-position (:capo_position normalized))
+            used-metronome (parse-bool-field (:used_metronome normalized))
+            metronome-bpms (parse-int-list-field (:metronome_bpms normalized))
+            key-changes (parse-string-list-field (:key_changes normalized))
+            notes (trim-or-nil (:notes normalized))]
+        (if (or (nil? title)
+                (= capo-position ::invalid)
+                (= used-metronome ::invalid)
+                (= metronome-bpms ::invalid)
+                (= key-changes ::invalid)
+                (and vocal-mode (not (valid-practice-vocal-modes vocal-mode))))
+          ::invalid
+          {:title title
+           :minutes (:minutes normalized)
+           :instrument instrument
+           :vocal_mode vocal-mode
+           :capo_position capo-position
+           :used_metronome used-metronome
+           :metronome_bpms metronome-bpms
+           :key_changes key-changes
+           :notes notes})))))
+
+(defn practice-song-metadata-present?
+  [song]
+  (or (:instrument song)
+      (:vocal_mode song)
+      (some? (:capo_position song))
+      (some? (:used_metronome song))
+      (seq (:metronome_bpms song))
+      (seq (:key_changes song))
+      (:notes song)))
+
+(defn resolve-instrument-id
+  [instrument-name]
+  (when instrument-name
+    (let [rows (exec-raw
+                ["insert into instruments (name) values (?)
+                  on conflict (name) do update set name = excluded.name
+                  returning id"
+                 [instrument-name]]
+                :results)]
+      (:id (first rows)))))
+
+(defn resolve-practice-vocal-mode-id
+  [vocal-mode-code]
+  (when vocal-mode-code
+    (let [rows (exec-raw
+                ["select id from practice_vocal_modes where code = ?"
+                 [vocal-mode-code]]
+                :results)]
+      (:id (first rows)))))
+
+(defn insert-practice-song-metadata!
+  [session-id song]
+  (when (practice-song-metadata-present? song)
+    (let [instrument-id (resolve-instrument-id (:instrument song))
+          vocal-mode-id (resolve-practice-vocal-mode-id (:vocal_mode song))]
+      (when (and (:vocal_mode song) (nil? vocal-mode-id))
+        (throw (ex-info "vocal mode is invalid" {})))
+      (exec-raw
+       ["insert into practice_song_details
+         (practice_session_id, song_title, instrument_id, vocal_mode_id, capo_position, used_metronome, notes)
+         values (?, ?, ?, ?, ?, ?, ?)"
+        [session-id
+         (:title song)
+         instrument-id
+         vocal-mode-id
+         (:capo_position song)
+         (:used_metronome song)
+         (:notes song)]])
+      (doseq [[idx bpm] (map-indexed vector (:metronome_bpms song))]
+        (exec-raw
+         ["insert into practice_song_tempos (practice_session_id, song_title, ordinal, bpm)
+           values (?, ?, ?, ?)"
+          [session-id (:title song) (inc idx) bpm]]))
+      (doseq [[idx key-name] (map-indexed vector (:key_changes song))]
+        (exec-raw
+         ["insert into practice_song_keys (practice_session_id, song_title, ordinal, key_name)
+           values (?, ?, ?, ?)"
+          [session-id (:title song) (inc idx) key-name]])))))
+
 (defn gig-type->flags
   [gig-type]
   (case gig-type
@@ -339,7 +491,7 @@
   "List practice sessions with nested songs"
   []
   (let [rows (exec-raw
-              ["select ps.id, ps.practiced_on, ps.created_at, ps.total_minutes,\n                      pss.position, pss.song_id, pss.song_title, pss.minutes, s.length\n               from practice_sessions ps\n               left join practice_session_songs pss on pss.practice_session_id = ps.id\n               left join songs s on s.title = pss.song_id\n               order by ps.created_at desc, ps.id desc, pss.position asc"]
+              ["select ps.id, ps.practiced_on, ps.created_at, ps.total_minutes,\n                      pss.position, pss.song_id, pss.song_title, pss.minutes, s.length,\n                      i.name as instrument_name,\n                      pvm.code as vocal_mode_code,\n                      psd.capo_position,\n                      psd.used_metronome,\n                      psd.notes,\n                      coalesce((\n                        select json_agg(pst.bpm order by pst.ordinal)\n                        from practice_song_tempos pst\n                        where pst.practice_session_id = pss.practice_session_id\n                          and pst.song_title = pss.song_title\n                      ), '[]'::json) as metronome_bpms_json,\n                      coalesce((\n                        select json_agg(psk.key_name order by psk.ordinal)\n                        from practice_song_keys psk\n                        where psk.practice_session_id = pss.practice_session_id\n                          and psk.song_title = pss.song_title\n                      ), '[]'::json) as key_changes_json\n               from practice_sessions ps\n               left join practice_session_songs pss on pss.practice_session_id = ps.id\n               left join songs s on s.title = pss.song_id\n               left join practice_song_details psd\n                 on psd.practice_session_id = pss.practice_session_id\n                and psd.song_title = pss.song_title\n               left join instruments i on i.id = psd.instrument_id\n               left join practice_vocal_modes pvm on pvm.id = psd.vocal_mode_id\n               order by ps.created_at desc, ps.id desc, pss.position asc"]
               :results)
         grouped (->> rows
                      (group-by :id)
@@ -350,7 +502,18 @@
                                              (map (fn [row]
                                                     {:position (:position row)
                                                      :title (:song_title row)
-                                                     :minutes (:minutes row)}))
+                                                     :minutes (:minutes row)
+                                                     :instrument (:instrument_name row)
+                                                     :vocal_mode (:vocal_mode_code row)
+                                                     :capo_position (:capo_position row)
+                                                     :used_metronome (:used_metronome row)
+                                                     :metronome_bpms (if-let [raw (:metronome_bpms_json row)]
+                                                                       (json/read-str (str raw))
+                                                                       [])
+                                                     :key_changes (if-let [raw (:key_changes_json row)]
+                                                                    (json/read-str (str raw))
+                                                                    [])
+                                                     :notes (:notes row)}))
                                              vec)
                                   estimated-time (estimated-minutes items)]
                               {:id id
@@ -897,18 +1060,11 @@
   (let [{:keys [date total_minutes songs]} (json-read request)
         session-date (if (and date (not (s/blank? date))) date (str (time/today)))
         songs-list (if (vector? songs) songs [])
-        normalized (map (fn [entry]
-                          (cond
-                            (string? entry) {:title entry :minutes nil}
-                            (map? entry) {:title (:title entry) :minutes (:minutes entry)}
-                            :else nil))
-                        songs-list)
+        normalized (map normalize-practice-song-entry songs-list)
         valid (filter (fn [row]
-                        (and row
-                             (string? (:title row))
-                             (not (s/blank? (:title row)))))
+                        (and row (not= row ::invalid)))
                       normalized)]
-    (if (not (seq valid))
+    (if (or (not (seq valid)) (not= (count valid) (count songs-list)))
       (-> (json-response {:error "songs are required"})
           (resp/status 400))
       (with-transaction
@@ -921,7 +1077,8 @@
            (doseq [[idx song] (map-indexed vector valid)]
              (exec-raw
               ["insert into practice_session_songs (practice_session_id, song_id, song_title, position, minutes) values (?, ?, ?, ?, ?)"
-               [session-id (:title song) (:title song) (inc idx) (:minutes song)]]))
+               [session-id (:title song) (:title song) (inc idx) (:minutes song)]])
+             (insert-practice-song-metadata! session-id song))
            (json-response {:practiceSessionId session-id
                            :songs (count valid)})))))))
 
@@ -949,21 +1106,14 @@
   (let [{:keys [date total_minutes songs]} (json-read request)
         session-date (if (and date (not (s/blank? date))) date nil)
         songs-list (if (vector? songs) songs [])
-        normalized (map (fn [entry]
-                          (cond
-                            (string? entry) {:title entry :minutes nil}
-                            (map? entry) {:title (:title entry) :minutes (:minutes entry)}
-                            :else nil))
-                        songs-list)
+        normalized (map normalize-practice-song-entry songs-list)
         valid (filter (fn [row]
-                        (and row
-                             (string? (:title row))
-                             (not (s/blank? (:title row)))))
+                        (and row (not= row ::invalid)))
                       normalized)]
     (if (or (s/blank? id) (nil? session-date))
       (-> (json-response {:error "date is required"})
           (resp/status 400))
-      (if (not (seq valid))
+      (if (or (not (seq valid)) (not= (count valid) (count songs-list)))
         (-> (json-response {:error "songs are required"})
             (resp/status 400))
         (with-transaction
@@ -983,7 +1133,8 @@
                  (doseq [[idx song] (map-indexed vector valid)]
                    (exec-raw
                     ["insert into practice_session_songs (practice_session_id, song_id, song_title, position, minutes) values (?, ?, ?, ?, ?)"
-                     [(Integer/parseInt id) (:title song) (:title song) (inc idx) (:minutes song)]]))
+                     [(Integer/parseInt id) (:title song) (:title song) (inc idx) (:minutes song)]])
+                   (insert-practice-song-metadata! (Integer/parseInt id) song))
                 (json-response {:id (:id row)
                                 :practiced_on (str (:practiced_on row))
                                 :total_minutes (:total_minutes row)

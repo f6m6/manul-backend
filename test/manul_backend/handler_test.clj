@@ -451,7 +451,14 @@
                                    :position 1
                                    :song_title "Song A"
                                    :minutes 10
-                                   :length nil}
+                                   :length nil
+                                   :instrument_name "Maton"
+                                   :vocal_mode_code "sing_and_play"
+                                   :capo_position 2
+                                   :used_metronome true
+                                   :metronome_bpms_json "[80,90]"
+                                   :key_changes_json "[\"G\",\"A\"]"
+                                   :notes "slow and steady"}
                                   {:id 1
                                    :practiced_on "2026-02-01"
                                    :total_minutes 20
@@ -462,7 +469,11 @@
     (let [response (practice-sessions-with-songs)
           body (json/read-str (:body response) :key-fn keyword)]
       (is (= 1 (count body)))
-      (is (= 8 (:estimated_time_minutes (first body)))))))
+      (is (= 8 (:estimated_time_minutes (first body))))
+      (is (= "Maton" (get-in body [0 :songs 0 :instrument])))
+      (is (= "sing_and_play" (get-in body [0 :songs 0 :vocal_mode])))
+      (is (= [80 90] (get-in body [0 :songs 0 :metronome_bpms])))
+      (is (= ["G" "A"] (get-in body [0 :songs 0 :key_changes]))))))
 
 (deftest practice-sessions-query-has-no-plus
   (let [captured (atom nil)]
@@ -778,6 +789,36 @@
           (is (re-find #"song_id" (:sql insert)))
           (is (= [7 "Song A" "Song A" 1 nil] (:params insert))))))))
 
+(deftest create-practice-session-inserts-song-metadata
+  (let [calls (atom [])]
+    (with-redefs [with-transaction (fn [f] (f))
+                  korma/exec-raw (fn [& args]
+                                   (let [[sql params] (if (vector? (first args))
+                                                        (first args)
+                                                        (second args))]
+                                     (swap! calls conj {:sql sql :params params})
+                                     (cond
+                                       (re-find #"insert into practice_sessions" sql) [{:id 7}]
+                                       (re-find #"insert into instruments" sql) [{:id 5}]
+                                       (re-find #"select id from practice_vocal_modes" sql) [{:id 2}]
+                                       :else :ok)))]
+      (let [body (json/write-str {:date "2026-02-01"
+                                  :songs [{:title "Song A"
+                                           :minutes 25
+                                           :instrument "Maton"
+                                           :vocal_mode "sing_and_play"
+                                           :capo_position 2
+                                           :used_metronome true
+                                           :metronome_bpms [80 90]
+                                           :key_changes ["G" "A"]
+                                           :notes "steady"}]})
+            response (create-practice-session (-> (mock/request :post "/practice-sessions" body)
+                                                  (mock/content-type "application/json")))]
+        (is (= 200 (:status response)))
+        (is (some #(re-find #"insert into practice_song_details" (:sql %)) @calls))
+        (is (some #(re-find #"insert into practice_song_tempos" (:sql %)) @calls))
+        (is (some #(re-find #"insert into practice_song_keys" (:sql %)) @calls))))))
+
 (deftest create-practice-session-requires-songs
   (with-redefs [with-transaction (fn [f] (f))
                 korma/exec-raw (fn [& _] :ok)]
@@ -800,6 +841,16 @@
   (with-redefs [with-transaction (fn [f] (f))
                 korma/exec-raw (fn [& _] :ok)]
     (let [body (json/write-str {:date "2026-02-01" :songs [123]})
+          response (create-practice-session (-> (mock/request :post "/practice-sessions" body)
+                                                (mock/content-type "application/json")))]
+      (is (= 400 (:status response)))
+      (is (re-find #"songs are required" (:body response))))))
+
+(deftest create-practice-session-rejects-invalid-song-metadata
+  (with-redefs [with-transaction (fn [f] (f))
+                korma/exec-raw (fn [& _] :ok)]
+    (let [body (json/write-str {:date "2026-02-01"
+                                :songs [{:title "Song A" :capo_position "high"}]})
           response (create-practice-session (-> (mock/request :post "/practice-sessions" body)
                                                 (mock/content-type "application/json")))]
       (is (= 400 (:status response)))
