@@ -22,7 +22,7 @@
 (def gigs-sslmode (or (System/getenv "GIGS_SSLMODE") "disable"))
 
 (declare normalize-length-interval)
-(declare home-x-data)
+(declare home-metrics-data)
 (declare last-gig-date-data)
 
 (defn json-write
@@ -104,6 +104,63 @@
                         "practice_hours_lifetime"
                         "originals_live_lifetime"
                         "direct_outreach_lifetime"})
+
+(def outreach-refresh-interval-ms (* 5 60 1000))
+(def outreach-retry-interval-ms 30000)
+(defonce home-outreach-state
+  (atom {:status :idle
+         :in-flight false
+         :metrics nil
+         :updated-at-ms nil
+         :last-attempt-ms nil}))
+
+(defn now-ms
+  []
+  (System/currentTimeMillis))
+
+(defn should-refresh-outreach?
+  [state now]
+  (cond
+    (:in-flight state) false
+    (= :idle (:status state)) true
+    (= :pending (:status state)) false
+    (= :error (:status state))
+    (> (- now (or (:last-attempt-ms state) 0)) outreach-retry-interval-ms)
+    :else
+    (> (- now (or (:updated-at-ms state) 0)) outreach-refresh-interval-ms)))
+
+(defn start-outreach-refresh!
+  []
+  (let [start? (atom false)
+        now (now-ms)]
+    (swap! home-outreach-state
+           (fn [state]
+             (if (should-refresh-outreach? state now)
+               (do
+                 (reset! start? true)
+                 (assoc state
+                        :status (if (:metrics state) :refreshing :pending)
+                        :in-flight true
+                        :last-attempt-ms now))
+               state)))
+    (when @start?
+      (future
+        (try
+          (let [metrics (direct-fan-outreach/fetch-direct-fan-outreach-from direct-fan-outreach/db-store)]
+            (swap! home-outreach-state assoc
+                   :status :ready
+                   :in-flight false
+                   :metrics metrics
+                   :updated-at-ms (now-ms)))
+          (catch Exception _
+            (swap! home-outreach-state assoc
+                   :status :error
+                   :in-flight false)))))))
+
+(defn outreach-snapshot
+  []
+  (start-outreach-refresh!)
+  @home-outreach-state)
 
 (defn normalize-gig-type
   [gig-type]
@@ -669,7 +726,7 @@
   []
   (json-response (recent-sessions-data)))
 
-(defn home-x-local-data
+(defn home-metrics-local-data
   []
   (let [metrics-row (home-x-metrics/fetch-home-x-metrics-from home-x-metrics/db-store)
         focus-songs (->> (exec-raw
@@ -697,36 +754,51 @@
      :goals goals
      :focus_songs focus-songs}))
 
-(defn home-x-outreach-data
+(defn home-metrics-outreach-data
   []
-  (try
-    (direct-fan-outreach/fetch-direct-fan-outreach-from direct-fan-outreach/db-store)
-    (catch Exception _
-      {:mailchimp_campaigns_sent 0
-       :mailchimp_campaigns_sent_ytd 0
-       :tiktok_posts 0
-       :tiktok_posts_ytd 0
-       :direct_fan_outreach_total 0
-       :direct_fan_outreach_ytd 0})))
+  (let [snapshot (outreach-snapshot)]
+    {:metrics (:metrics snapshot)
+     :status (name (:status snapshot))
+     :updated_at_ms (:updated-at-ms snapshot)}))
+
+(defn home-metrics-data
+  []
+  (let [local (home-metrics-local-data)
+        outreach (home-metrics-outreach-data)
+        outreach-metrics (or (:metrics outreach) {})]
+    (-> local
+        (assoc :outreach_status (:status outreach))
+        (assoc :outreach_updated_at_ms (:updated_at_ms outreach))
+        (clojure.core/update :metrics merge outreach-metrics))))
+
+(defn home-metrics-local
+  []
+  (json-response (home-metrics-local-data)))
+
+(defn home-metrics-outreach
+  []
+  (json-response (home-metrics-outreach-data)))
+
+(defn home-metrics
+  []
+  (json-response (home-metrics-data)))
 
 (defn home-x-local
   []
-  (json-response (home-x-local-data)))
+  (json-response (home-metrics-local-data)))
 
 (defn home-x-outreach
   []
-  (json-response (home-x-outreach-data)))
+  (json-response (home-metrics-outreach-data)))
 
 (defn home-x
   "Return combined Home-X payload (local + outreach)."
   []
-  (json-response (home-x-data)))
+  (json-response (home-metrics-data)))
 
 (defn home-x-data
   []
-  (let [local (home-x-local-data)
-        outreach (home-x-outreach-data)]
-    (clojure.core/update local :metrics merge outreach)))
+  (home-metrics-data))
 
 (defn update-home-x-goal
   [goal-key request]
@@ -746,6 +818,10 @@
       (let [row (home-x-goals/update-home-x-goal-from home-x-goals/db-store goal-key parsed-target)]
         (json-response {:goal_key (:goal_key row)
                         :target_value (:target_value row)})))))
+
+(defn update-home-goal
+  [goal-key request]
+  (update-home-x-goal goal-key request))
 
 (defn create-performance
   "Create a performance and its song_performances rows"
@@ -1160,7 +1236,7 @@
     :recent_sessions (recent-sessions-data)
     :live_gigs_by_year (live-gigs-by-year-data)
     :sessions_by_year (sessions-by-year-data)
-    :home_x (home-x-data)}))
+    :home_metrics (home-metrics-data)}))
 
 (defn stringify
   [date]
@@ -1221,6 +1297,10 @@
   (GET "/next-songs-to-practise" [] (next-songs-to-practise))
   (GET "/home-next-actions" [] (home-next-actions))
   (GET "/home-dashboard" [] (home-dashboard))
+  (GET "/home-metrics/local" [] (home-metrics-local))
+  (GET "/home-metrics/outreach" [] (home-metrics-outreach))
+  (GET "/home-metrics" [] (home-metrics))
+  (PUT "/home-goals/:goal-key" [goal-key :as request] (update-home-goal goal-key request))
   (GET "/home-x/local" [] (home-x-local))
   (GET "/home-x/outreach" [] (home-x-outreach))
   (GET "/home-x" [] (home-x))

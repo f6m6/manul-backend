@@ -1254,13 +1254,14 @@
                                  [{:song_id "Song A"}
                                   {:song_id "Song B"}
                                   {:song_id "Song C"}])
-                direct-fan-outreach/fetch-direct-fan-outreach-from (fn [_]
-                                                                     {:mailchimp_campaigns_sent 12
-                                                                      :mailchimp_campaigns_sent_ytd 3
-                                                                      :tiktok_posts 37
-                                                                      :tiktok_posts_ytd 0
-                                                                      :direct_fan_outreach_total 49
-                                                                      :direct_fan_outreach_ytd 3})
+                outreach-snapshot (fn []
+                                   {:status :ready
+                                    :metrics {:mailchimp_campaigns_sent 12
+                                              :mailchimp_campaigns_sent_ytd 3
+                                              :tiktok_posts 37
+                                              :tiktok_posts_ytd 0
+                                              :direct_fan_outreach_total 49
+                                              :direct_fan_outreach_ytd 3}})
                 home-x-goals/fetch-home-x-goals-from (fn [_]
                                                         {:gigs_lifetime 200
                                                         :solo_practice_minutes_weekly 240
@@ -1294,13 +1295,7 @@
 (deftest home-x-route-available
   (with-redefs [home-x-metrics/fetch-home-x-metrics-from (fn [_] {})
                 korma/exec-raw (fn [& _] [])
-                direct-fan-outreach/fetch-direct-fan-outreach-from (fn [_]
-                                                                     {:mailchimp_campaigns_sent 0
-                                                                      :mailchimp_campaigns_sent_ytd 0
-                                                                      :tiktok_posts 0
-                                                                      :tiktok_posts_ytd 0
-                                                                      :direct_fan_outreach_total 0
-                                                                      :direct_fan_outreach_ytd 0})
+                outreach-snapshot (fn [] {:status :ready :metrics {}})
                 home-x-goals/fetch-home-x-goals-from (fn [_]
                                                        {:gigs_lifetime 200
                                                         :solo_practice_minutes_weekly 240
@@ -1322,6 +1317,19 @@
     (let [response (app (mock/request :get "/home-x/local"))]
       (is (= 200 (:status response))))))
 
+(deftest home-metrics-route-available
+  (with-redefs [home-x-metrics/fetch-home-x-metrics-from (fn [_] {})
+                korma/exec-raw (fn [& _] [])
+                outreach-snapshot (fn [] {:status :ready :metrics {}})
+                home-x-goals/fetch-home-x-goals-from (fn [_]
+                                                       {:gigs_lifetime 200
+                                                        :solo_practice_minutes_weekly 240
+                                                        :practice_hours_lifetime 2000
+                                                        :originals_live_lifetime 120
+                                                        :direct_outreach_lifetime 3000})]
+    (let [response (app (mock/request :get "/home-metrics"))]
+      (is (= 200 (:status response))))))
+
 (deftest home-next-actions-route-available
   (with-redefs [song-plays/fetch-next-live-songs-by-frecency (fn [& _] [])
                 song-plays/fetch-next-practice-songs-by-frecency (fn [& _] [])]
@@ -1329,13 +1337,7 @@
       (is (= 200 (:status response))))))
 
 (deftest home-x-outreach-route-available
-  (with-redefs [direct-fan-outreach/fetch-direct-fan-outreach-from (fn [_]
-                                                                     {:mailchimp_campaigns_sent 0
-                                                                      :mailchimp_campaigns_sent_ytd 0
-                                                                      :tiktok_posts 0
-                                                                      :tiktok_posts_ytd 0
-                                                                      :direct_fan_outreach_total 0
-                                                                      :direct_fan_outreach_ytd 0})]
+  (with-redefs [outreach-snapshot (fn [] {:status :ready :metrics {}})]
     (let [response (app (mock/request :get "/home-x/outreach"))]
       (is (= 200 (:status response))))))
 
@@ -1387,13 +1389,14 @@
                                                               :minimum_minutes 30
                                                               :actual_minutes 35
                                                               :effective_minutes 35}])
-                direct-fan-outreach/fetch-direct-fan-outreach-from (fn [_]
-                                                                     {:mailchimp_campaigns_sent 12
-                                                                      :mailchimp_campaigns_sent_ytd 3
-                                                                      :tiktok_posts 37
-                                                                      :tiktok_posts_ytd 0
-                                                                      :direct_fan_outreach_total 49
-                                                                      :direct_fan_outreach_ytd 3})
+                outreach-snapshot (fn []
+                                   {:status :ready
+                                    :metrics {:mailchimp_campaigns_sent 12
+                                              :mailchimp_campaigns_sent_ytd 3
+                                              :tiktok_posts 37
+                                              :tiktok_posts_ytd 0
+                                              :direct_fan_outreach_total 49
+                                              :direct_fan_outreach_ytd 3}})
                 home-x-goals/fetch-home-x-goals-from (fn [_]
                                                        {:gigs_lifetime 200
                                                         :solo_practice_minutes_weekly 240
@@ -1408,14 +1411,25 @@
       (is (= 1 (count (:recent_sessions body))))
       (is (= 1 (count (:live_gigs_by_year body))))
       (is (= 1 (count (:sessions_by_year body))))
-      (is (= 95 (get-in body [:home_x :metrics :solo_practice_minutes_weekly])))
-      (is (= 49 (get-in body [:home_x :metrics :direct_fan_outreach_total]))))))
+      (is (= 95 (get-in body [:home_metrics :metrics :solo_practice_minutes_weekly])))
+      (is (= 49 (get-in body [:home_metrics :metrics :direct_fan_outreach_total]))))))
 
 (deftest update-home-x-goal-updates-known-goal
   (with-redefs [home-x-goals/update-home-x-goal-from (fn [_ goal-key target]
                                                        {:goal_key goal-key :target_value target})]
     (let [body (json/write-str {:target 3500})
           response (app (-> (mock/request :put "/home-x-goals/direct_outreach_lifetime" body)
+                            (mock/content-type "application/json")))
+          response-body (json/read-str (:body response) :key-fn keyword)]
+      (is (= 200 (:status response)))
+      (is (= "direct_outreach_lifetime" (:goal_key response-body)))
+      (is (= 3500 (:target_value response-body))))))
+
+(deftest update-home-goal-route-updates-known-goal
+  (with-redefs [home-x-goals/update-home-x-goal-from (fn [_ goal-key target]
+                                                       {:goal_key goal-key :target_value target})]
+    (let [body (json/write-str {:target 3500})
+          response (app (-> (mock/request :put "/home-goals/direct_outreach_lifetime" body)
                             (mock/content-type "application/json")))
           response-body (json/read-str (:body response) :key-fn keyword)]
       (is (= 200 (:status response)))
