@@ -1,0 +1,1 @@
+["^ ","~:members",["^ ","<init>",["~#set",[["^ ","~:flags",["^2",["~:method","~:public"]]]]],"addConnectionEventListener",["^2",[["^ ","^3",["^2",["^4","^5"]]]]],"removeConnectionEventListener",["^2",[["^ ","^3",["^2",["^4","^5"]]]]],"fireConnectionClosed",["^2",[["^ ","^3",["^2",["^4","^5"]]]]],"fireConnectionErrorOccurred",["^2",[["^ ","^3",["^2",["^4","^5"]]]]]]]

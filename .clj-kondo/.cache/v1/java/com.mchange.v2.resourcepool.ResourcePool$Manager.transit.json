@@ -1,0 +1,1 @@
+["^ ","~:members",["^ ","acquireResource",["~#set",[["^ ","~:flags",["^2",["~:method","~:public"]]]]],"refurbishIdleResource",["^2",[["^ ","^3",["^2",["^4","^5"]]]]],"refurbishResourceOnCheckout",["^2",[["^ ","^3",["^2",["^4","^5"]]]]],"refurbishResourceOnCheckin",["^2",[["^ ","^3",["^2",["^4","^5"]]]]],"destroyResource",["^2",[["^ ","^3",["^2",["^4","^5"]]]]]]]
