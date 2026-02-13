@@ -636,10 +636,10 @@
   - Mirror You songs always first
   - then overdue frecency (older + less frequent first)"
   []
-  (let [live (->> (song-plays/fetch-next-live-songs-by-frecency song-plays/db-store 10)
+  (let [live (->> (song-plays/fetch-next-live-songs-by-frecency song-plays/db-store 3)
                   (map (fn [row] (clojure.core/update row :last_played str)))
                   vec)
-        solo-practice (->> (song-plays/fetch-next-practice-songs-by-frecency song-plays/db-store 10)
+        solo-practice (->> (song-plays/fetch-next-practice-songs-by-frecency song-plays/db-store 3)
                            (map (fn [row] (clojure.core/update row :last_played_anywhere str)))
                            vec)]
     (json-response {:next_live live
