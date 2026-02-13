@@ -846,13 +846,13 @@
         practice-date (java.sql.Date/valueOf "2026-02-04")]
     (with-redefs [song-plays/fetch-next-live-songs-by-frecency
                   (fn [_ limit]
-                    (is (= 3 limit))
+                    (is (= 10 limit))
                     [{:song_id "Live Song 1" :last_played live-date}
                      {:song_id "Live Song 2" :last_played nil}
                      {:song_id "Live Song 3" :last_played nil}])
                   song-plays/fetch-next-practice-songs-by-frecency
                   (fn [_ limit]
-                    (is (= 3 limit))
+                    (is (= 10 limit))
                     [{:song_id "Practice Song 1" :last_played_anywhere practice-date}
                      {:song_id "Practice Song 2" :last_played_anywhere nil}
                      {:song_id "Practice Song 3" :last_played_anywhere nil}])]
