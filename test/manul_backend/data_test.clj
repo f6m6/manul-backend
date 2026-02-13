@@ -1,6 +1,7 @@
 (ns manul-backend.data-test
   (:require [clojure.test :refer :all]
             [manul-backend.data.recent-sessions :as recent-sessions]
+            [manul-backend.data.home-x-metrics :as home-x-metrics]
             [manul-backend.data.song-plays :as song-plays]
             [korma.core :as korma]))
 
@@ -66,3 +67,23 @@
         (is (re-find #"last_played_anywhere" (:sql @captured)))
         (is (= [3] (:params @captured)))
         (is (= "Song B" (:song_id (first rows))))))))
+
+(deftest fetch-home-x-metrics-uses-view
+  (let [captured (atom nil)]
+    (with-redefs [korma/exec-raw (fn [& args]
+                                   (let [[sql] (if (vector? (first args))
+                                                 (first args)
+                                                 (second args))]
+                                     (reset! captured sql)
+                                     [{:gigs_ytd 3
+                                       :gigs_lifetime 83
+                                       :solo_practice_minutes_weekly 95
+                                       :practice_minutes_ytd 318
+                                       :practice_minutes_lifetime 2400
+                                       :songs_performed_live_ytd 12
+                                       :songs_performed_live_lifetime 57
+                                       :sessions_ytd 10}]))]
+      (let [row (home-x-metrics/fetch-home-x-metrics-from home-x-metrics/db-store)]
+        (is (re-find #"from view_home_x_metrics" @captured))
+        (is (= 83 (:gigs_lifetime row)))
+        (is (= 95 (:solo_practice_minutes_weekly row)))))))

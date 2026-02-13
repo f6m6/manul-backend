@@ -13,6 +13,7 @@
             [manul-backend.data.recent-sessions :as recent-sessions]
             [manul-backend.data.song-plays :as song-plays]
             [manul-backend.data.direct-fan-outreach :as direct-fan-outreach]
+            [manul-backend.data.home-x-metrics :as home-x-metrics]
             [manul-backend.data.home-x-goals :as home-x-goals]))
 
 (use 'korma.db)
@@ -21,6 +22,8 @@
 (def gigs-sslmode (or (System/getenv "GIGS_SSLMODE") "disable"))
 
 (declare normalize-length-interval)
+(declare home-x-data)
+(declare last-gig-date-data)
 
 (defn json-write
   [data]
@@ -629,12 +632,8 @@
        vec
        json-response))
 
-(defn home-next-actions
-  "Return thin home-page recommendations with backend-owned ranking logic.
-  Ranking rules:
-  - active songs only
-  - Mirror You songs always first
-  - then overdue frecency (older + less frequent first)"
+(defn home-next-actions-data
+  "Return backend-owned next-action rankings."
   []
   (let [live (->> (song-plays/fetch-next-live-songs-by-frecency song-plays/db-store 3)
                   (map (fn [row] (clojure.core/update row :last_played str)))
@@ -642,11 +641,16 @@
         solo-practice (->> (song-plays/fetch-next-practice-songs-by-frecency song-plays/db-store 3)
                            (map (fn [row] (clojure.core/update row :last_played_anywhere str)))
                            vec)]
-    (json-response {:next_live live
-                    :next_solo_practice solo-practice})))
+    {:next_live live
+     :next_solo_practice solo-practice}))
 
-(defn recent-sessions
-  "Return a JSON array with the 5 most recent sessions by session date."
+(defn home-next-actions
+  "Return thin home-page recommendations with backend-owned ranking logic."
+  []
+  (json-response (home-next-actions-data)))
+
+(defn recent-sessions-data
+  "Return the most recent sessions by session date."
   []
   (->> (recent-sessions/fetch-recent-sessions-from recent-sessions/db-store 5)
        (map (fn [row]
@@ -658,50 +662,16 @@
                     (clojure.core/update :session_date str)
                     (clojure.core/update :session_created_at (fn [value]
                                                                (when value (str value))))))))
-       vec
-       json-response))
+       vec))
+
+(defn recent-sessions
+  "Return a JSON array with the 5 most recent sessions by session date."
+  []
+  (json-response (recent-sessions-data)))
 
 (defn home-x-local-data
   []
-  (let [metrics-row (first
-                     (exec-raw
-                      ["with year_start as (
-                          select date_trunc('year', current_date)::date as d
-                        ),
-                        week_start as (
-                          select date_trunc('week', current_date)::date as d
-                        )
-                        select
-                          (select count(*)
-                           from performances p
-                           where p.performancedate >= (select d from year_start))::int as gigs_ytd,
-                          (select count(*) from performances)::int as gigs_lifetime,
-                          coalesce((select sum(coalesce(vrs.effective_minutes, 0))
-                                    from view_recent_sessions vrs
-                                    where vrs.session_date >= (select d from week_start)
-                                      and vrs.session_type = 'solo_practice'), 0)::int as solo_practice_minutes_weekly,
-                          coalesce((select sum(coalesce(vrs.effective_minutes, 0))
-                                    from view_recent_sessions vrs
-                                    where vrs.session_date >= (select d from year_start)
-                                      and vrs.session_type in ('solo_practice', 'singing_lesson')), 0)::int as practice_minutes_ytd,
-                          coalesce((select sum(coalesce(vrs.effective_minutes, 0))
-                                    from view_recent_sessions vrs
-                                    where vrs.session_type in ('solo_practice', 'singing_lesson')), 0)::int as practice_minutes_lifetime,
-                          coalesce((select count(sp.song_id)
-                                    from song_performances sp
-                                    join performances p on p.id = sp.performance_id
-                                    join songs s on s.title = sp.song_id
-                                    where p.performancedate >= (select d from year_start)
-                                      and s.artist = 'Farhan Mannan'), 0)::int as songs_performed_live_ytd,
-                          coalesce((select count(sp.song_id)
-                                    from song_performances sp
-                                    join performances p on p.id = sp.performance_id
-                                    join songs s on s.title = sp.song_id
-                                    where s.artist = 'Farhan Mannan'), 0)::int as songs_performed_live_lifetime,
-                          coalesce((select count(*)
-                                    from view_recent_sessions vrs
-                                    where vrs.session_date >= (select d from year_start)), 0)::int as sessions_ytd"]
-                      :results))
+  (let [metrics-row (home-x-metrics/fetch-home-x-metrics-from home-x-metrics/db-store)
         focus-songs (->> (exec-raw
                           ["select v.song_id
                             from view_next_songs_to_perform_live v
@@ -750,9 +720,13 @@
 (defn home-x
   "Return combined Home-X payload (local + outreach)."
   []
+  (json-response (home-x-data)))
+
+(defn home-x-data
+  []
   (let [local (home-x-local-data)
         outreach (home-x-outreach-data)]
-    (json-response (clojure.core/update local :metrics merge outreach))))
+    (clojure.core/update local :metrics merge outreach)))
 
 (defn update-home-x-goal
   [goal-key request]
@@ -1121,6 +1095,11 @@
 (defn last-gig-date
   "Return a JSON with date, venue, and setlist of the most recent gig."
   []
+  (json-response (last-gig-date-data)))
+
+(defn last-gig-date-data
+  "Return date, venue, and setlist for the most recent gig."
+  []
   (let [rows (exec-raw
               ["with latest as (
                   select p.id, p.performancedate, p.venue
@@ -1144,23 +1123,44 @@
                   {:lastGigDate ""
                    :lastGigVenue nil
                    :lastGigSetlist []})]
-    (json-response payload)))
+    payload))
 
-(defn live-gigs-by-year
-  "Return yearly gig counts and estimated live minutes"
+(defn live-gigs-by-year-data
+  "Return yearly gig counts and estimated live minutes."
   []
   (let [rows (exec-raw
               ["select extract(year from p.performancedate)::int as year,\n                      count(distinct p.id)::int as gigs,\n                      coalesce(ceil(sum(case\n               when sp.song_id is null then 0\n               else coalesce(extract(epoch from s.length), 240)\n               end) / 60.0)::int, 0) as estimated_minutes\n               from performances p\n               left join song_performances sp on sp.performance_id = p.id\n               left join songs s on s.title = sp.song_id\n               group by year\n               order by year desc"]
               :results)]
-    (json-response (vec rows))))
+    (vec rows)))
 
-(defn sessions-by-year
-  "Return yearly session counts and minimum/actual minutes across all sessions"
+(defn live-gigs-by-year
+  "Return yearly gig counts and estimated live minutes"
+  []
+  (json-response (live-gigs-by-year-data)))
+
+(defn sessions-by-year-data
+  "Return yearly session counts and minute totals."
   []
   (let [rows (exec-raw
               ["select extract(year from session_date)::int as year,\n                      count(*)::int as sessions,\n                      coalesce(sum(minimum_minutes)::int, 0) as minimum_minutes,\n                      coalesce(sum(actual_minutes)::int, 0) as actual_minutes,\n                      coalesce(sum(effective_minutes)::int, 0) as effective_minutes,\n                      coalesce(sum(case\n                                     when session_type in ('solo_practice', 'singing_lesson') then effective_minutes\n                                     else 0\n                                   end)::int, 0) as practice_minutes,\n                      coalesce(sum(case\n                                     when session_type = 'performance' then effective_minutes\n                                     else 0\n                                   end)::int, 0) as performance_minutes\n               from view_recent_sessions\n               group by year\n               order by year desc"]
               :results)]
-    (json-response (vec rows))))
+    (vec rows)))
+
+(defn sessions-by-year
+  "Return yearly session counts and minimum/actual minutes across all sessions"
+  []
+  (json-response (sessions-by-year-data)))
+
+(defn home-dashboard
+  "Canonical home payload so frontend can render from one contract."
+  []
+  (json-response
+   {:last_gig (last-gig-date-data)
+    :home_next_actions (home-next-actions-data)
+    :recent_sessions (recent-sessions-data)
+    :live_gigs_by_year (live-gigs-by-year-data)
+    :sessions_by_year (sessions-by-year-data)
+    :home_x (home-x-data)}))
 
 (defn stringify
   [date]
@@ -1220,6 +1220,7 @@
   (GET "/next-songs-to-perform-live" [] (next-songs-to-perform-live))
   (GET "/next-songs-to-practise" [] (next-songs-to-practise))
   (GET "/home-next-actions" [] (home-next-actions))
+  (GET "/home-dashboard" [] (home-dashboard))
   (GET "/home-x/local" [] (home-x-local))
   (GET "/home-x/outreach" [] (home-x-outreach))
   (GET "/home-x" [] (home-x))

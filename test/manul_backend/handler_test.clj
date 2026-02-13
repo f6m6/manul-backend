@@ -6,6 +6,7 @@
             [manul-backend.data.recent-sessions :as recent-sessions]
             [manul-backend.data.song-plays :as song-plays]
             [manul-backend.data.direct-fan-outreach :as direct-fan-outreach]
+            [manul-backend.data.home-x-metrics :as home-x-metrics]
             [manul-backend.data.home-x-goals :as home-x-goals]
             [manul-backend.handler :refer :all]))
 
@@ -1240,25 +1241,19 @@
       (is (= 200 (:status response))))))
 
 (deftest home-x-returns-summary-metrics
-  (with-redefs [korma/exec-raw (fn [& args]
-                                 (let [[sql] (if (vector? (first args))
-                                               (first args)
-                                               (second args))]
-                                   (cond
-                                     (re-find #"from performances p" sql)
-                                     [{:gigs_ytd 3
-                                       :gigs_lifetime 83
-                                       :solo_practice_minutes_weekly 95
-                                       :practice_minutes_ytd 318
-                                       :practice_minutes_lifetime 2400
-                                       :songs_performed_live_ytd 12
-                                       :songs_performed_live_lifetime 57
-                                       :sessions_ytd 10}]
-                                     (re-find #"from view_next_songs_to_perform_live" sql)
-                                     [{:song_id "Song A"}
-                                      {:song_id "Song B"}
-                                      {:song_id "Song C"}]
-                                     :else [])))
+  (with-redefs [home-x-metrics/fetch-home-x-metrics-from (fn [_]
+                                                           {:gigs_ytd 3
+                                                            :gigs_lifetime 83
+                                                            :solo_practice_minutes_weekly 95
+                                                            :practice_minutes_ytd 318
+                                                            :practice_minutes_lifetime 2400
+                                                            :songs_performed_live_ytd 12
+                                                            :songs_performed_live_lifetime 57
+                                                            :sessions_ytd 10})
+                korma/exec-raw (fn [& _]
+                                 [{:song_id "Song A"}
+                                  {:song_id "Song B"}
+                                  {:song_id "Song C"}])
                 direct-fan-outreach/fetch-direct-fan-outreach-from (fn [_]
                                                                      {:mailchimp_campaigns_sent 12
                                                                       :mailchimp_campaigns_sent_ytd 3
@@ -1297,7 +1292,8 @@
       (is (= ["Song A" "Song B" "Song C"] (:focus_songs body))))))
 
 (deftest home-x-route-available
-  (with-redefs [korma/exec-raw (fn [& _] [])
+  (with-redefs [home-x-metrics/fetch-home-x-metrics-from (fn [_] {})
+                korma/exec-raw (fn [& _] [])
                 direct-fan-outreach/fetch-direct-fan-outreach-from (fn [_]
                                                                      {:mailchimp_campaigns_sent 0
                                                                       :mailchimp_campaigns_sent_ytd 0
@@ -1315,7 +1311,8 @@
       (is (= 200 (:status response))))))
 
 (deftest home-x-local-route-available
-  (with-redefs [korma/exec-raw (fn [& _] [])
+  (with-redefs [home-x-metrics/fetch-home-x-metrics-from (fn [_] {})
+                korma/exec-raw (fn [& _] [])
                 home-x-goals/fetch-home-x-goals-from (fn [_]
                                                        {:gigs_lifetime 200
                                                         :solo_practice_minutes_weekly 240
@@ -1341,6 +1338,78 @@
                                                                       :direct_fan_outreach_ytd 0})]
     (let [response (app (mock/request :get "/home-x/outreach"))]
       (is (= 200 (:status response))))))
+
+(deftest home-dashboard-returns-canonical-home-payload
+  (with-redefs [home-x-metrics/fetch-home-x-metrics-from (fn [_]
+                                                           {:gigs_ytd 3
+                                                            :gigs_lifetime 83
+                                                            :solo_practice_minutes_weekly 95
+                                                            :practice_minutes_ytd 318
+                                                            :practice_minutes_lifetime 2400
+                                                            :songs_performed_live_ytd 12
+                                                            :songs_performed_live_lifetime 57
+                                                            :sessions_ytd 10})
+                korma/exec-raw (fn [& args]
+                                 (let [[sql] (if (vector? (first args))
+                                               (first args)
+                                               (second args))]
+                                   (cond
+                                     (re-find #"with latest as" sql)
+                                     [{:performancedate (java.sql.Date/valueOf "2026-02-01")
+                                       :venue "The Dignity"
+                                       :song_id "Song A"
+                                       :setlistposition 1}
+                                      {:performancedate (java.sql.Date/valueOf "2026-02-01")
+                                       :venue "The Dignity"
+                                       :song_id "Song B"
+                                       :setlistposition 2}]
+                                     (re-find #"from view_next_songs_to_perform_live" sql)
+                                     [{:song_id "Song A"} {:song_id "Song B"}]
+                                     :else [])))
+                live-gigs-by-year-data (fn [] [{:year 2026 :gigs 2 :estimated_minutes 40}])
+                sessions-by-year-data (fn []
+                                        [{:year 2026
+                                          :sessions 6
+                                          :minimum_minutes 540
+                                          :actual_minutes 480
+                                          :effective_minutes 480
+                                          :practice_minutes 300
+                                          :performance_minutes 180}])
+                song-plays/fetch-next-live-songs-by-frecency (fn [& _] [{:title "Song A"}])
+                song-plays/fetch-next-practice-songs-by-frecency (fn [& _] [{:title "Song B"}])
+                recent-sessions/fetch-recent-sessions-from (fn [& _]
+                                                            [{:session_type "solo_practice"
+                                                              :session_id 4
+                                                              :session_date (java.sql.Date/valueOf "2026-02-02")
+                                                              :session_created_at (java.sql.Timestamp/valueOf "2026-02-04 11:00:00")
+                                                              :session_label "Warmup"
+                                                              :song_count 1
+                                                              :minimum_minutes 30
+                                                              :actual_minutes 35
+                                                              :effective_minutes 35}])
+                direct-fan-outreach/fetch-direct-fan-outreach-from (fn [_]
+                                                                     {:mailchimp_campaigns_sent 12
+                                                                      :mailchimp_campaigns_sent_ytd 3
+                                                                      :tiktok_posts 37
+                                                                      :tiktok_posts_ytd 0
+                                                                      :direct_fan_outreach_total 49
+                                                                      :direct_fan_outreach_ytd 3})
+                home-x-goals/fetch-home-x-goals-from (fn [_]
+                                                       {:gigs_lifetime 200
+                                                        :solo_practice_minutes_weekly 240
+                                                        :practice_hours_lifetime 2000
+                                                        :originals_live_lifetime 120
+                                                        :direct_outreach_lifetime 3000})]
+    (let [response (app (mock/request :get "/home-dashboard"))
+          body (json/read-str (:body response) :key-fn keyword)]
+      (is (= 200 (:status response)))
+      (is (= "2026-02-01" (get-in body [:last_gig :lastGigDate])))
+      (is (= 1 (count (get-in body [:home_next_actions :next_live]))))
+      (is (= 1 (count (:recent_sessions body))))
+      (is (= 1 (count (:live_gigs_by_year body))))
+      (is (= 1 (count (:sessions_by_year body))))
+      (is (= 95 (get-in body [:home_x :metrics :solo_practice_minutes_weekly])))
+      (is (= 49 (get-in body [:home_x :metrics :direct_fan_outreach_total]))))))
 
 (deftest update-home-x-goal-updates-known-goal
   (with-redefs [home-x-goals/update-home-x-goal-from (fn [_ goal-key target]
