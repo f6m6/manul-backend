@@ -761,12 +761,37 @@
      :status (name (:status snapshot))
      :updated_at_ms (:updated-at-ms snapshot)}))
 
+(defn week-progress-fraction
+  []
+  (let [today (java.time.LocalDate/now)
+        week-start (.atStartOfDay
+                    (.with today
+                           (java.time.temporal.TemporalAdjusters/previousOrSame java.time.DayOfWeek/MONDAY)))
+        week-end (.plusDays week-start 7)
+        now (java.time.LocalDateTime/now)
+        total-seconds (double (.getSeconds (java.time.Duration/between week-start week-end)))
+        elapsed-seconds (double (.getSeconds (java.time.Duration/between week-start now)))
+        raw-fraction (if (pos? total-seconds) (/ elapsed-seconds total-seconds) 0.0)]
+    (max 0.0 (min 1.0 raw-fraction))))
+
+(defn farhan-weekly-pace-data
+  [weekly-goal]
+  (let [safe-goal (max 0 (long (or weekly-goal 0)))
+        fraction (week-progress-fraction)
+        expected-minutes (long (Math/round (* safe-goal fraction)))
+        expected-progress-pct (long (Math/round (* 100.0 fraction)))]
+    {:farhan_weekly_expected_minutes expected-minutes
+     :farhan_weekly_expected_progress_pct expected-progress-pct
+     :week_mode "calendar_week"}))
+
 (defn home-metrics-data
   []
   (let [local (home-metrics-local-data)
         outreach (home-metrics-outreach-data)
-        outreach-metrics (or (:metrics outreach) {})]
+        outreach-metrics (or (:metrics outreach) {})
+        weekly-goal (get-in local [:goals :solo_practice_minutes_weekly])]
     (-> local
+        (assoc :pace (farhan-weekly-pace-data weekly-goal))
         (assoc :outreach_status (:status outreach))
         (assoc :outreach_updated_at_ms (:updated_at_ms outreach))
         (clojure.core/update :metrics merge outreach-metrics))))

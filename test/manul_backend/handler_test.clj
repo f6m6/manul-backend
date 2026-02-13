@@ -1262,6 +1262,7 @@
                                               :tiktok_posts_ytd 0
                                               :direct_fan_outreach_total 49
                                               :direct_fan_outreach_ytd 3}})
+                week-progress-fraction (fn [] 0.5)
                 home-x-goals/fetch-home-x-goals-from (fn [_]
                                                         {:gigs_lifetime 200
                                                         :solo_practice_minutes_weekly 240
@@ -1290,6 +1291,8 @@
       (is (= 2000 (get-in body [:goals :practice_hours_lifetime])))
       (is (= 120 (get-in body [:goals :originals_live_lifetime])))
       (is (= 3000 (get-in body [:goals :direct_outreach_lifetime])))
+      (is (= 120 (get-in body [:pace :farhan_weekly_expected_minutes])))
+      (is (= 50 (get-in body [:pace :farhan_weekly_expected_progress_pct])))
       (is (= ["Song A" "Song B" "Song C"] (:focus_songs body))))))
 
 (deftest home-x-route-available
@@ -1397,6 +1400,7 @@
                                               :tiktok_posts_ytd 0
                                               :direct_fan_outreach_total 49
                                               :direct_fan_outreach_ytd 3}})
+                week-progress-fraction (fn [] 0.5)
                 home-x-goals/fetch-home-x-goals-from (fn [_]
                                                        {:gigs_lifetime 200
                                                         :solo_practice_minutes_weekly 240
@@ -1412,7 +1416,9 @@
       (is (= 1 (count (:live_gigs_by_year body))))
       (is (= 1 (count (:sessions_by_year body))))
       (is (= 95 (get-in body [:home_metrics :metrics :solo_practice_minutes_weekly])))
-      (is (= 49 (get-in body [:home_metrics :metrics :direct_fan_outreach_total]))))))
+      (is (= 49 (get-in body [:home_metrics :metrics :direct_fan_outreach_total])))
+      (is (= 120 (get-in body [:home_metrics :pace :farhan_weekly_expected_minutes])))
+      (is (= 50 (get-in body [:home_metrics :pace :farhan_weekly_expected_progress_pct]))))))
 
 (deftest update-home-x-goal-updates-known-goal
   (with-redefs [home-x-goals/update-home-x-goal-from (fn [_ goal-key target]
