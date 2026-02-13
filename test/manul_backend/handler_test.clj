@@ -1205,6 +1205,7 @@
                                      (re-find #"from performances p" sql)
                                      [{:gigs_ytd 3
                                        :gigs_lifetime 83
+                                       :solo_practice_minutes_weekly 95
                                        :practice_minutes_ytd 318
                                        :practice_minutes_lifetime 2400
                                        :songs_performed_live_ytd 12
@@ -1223,7 +1224,8 @@
                                                                       :direct_fan_outreach_total 49
                                                                       :direct_fan_outreach_ytd 3})
                 home-x-goals/fetch-home-x-goals-from (fn [_]
-                                                       {:gigs_lifetime 200
+                                                        {:gigs_lifetime 200
+                                                        :solo_practice_minutes_weekly 240
                                                         :practice_hours_lifetime 2000
                                                         :originals_live_lifetime 120
                                                         :direct_outreach_lifetime 3000})]
@@ -1232,6 +1234,7 @@
       (is (= 200 (:status response)))
       (is (= 3 (get-in body [:metrics :gigs_ytd])))
       (is (= 83 (get-in body [:metrics :gigs_lifetime])))
+      (is (= 95 (get-in body [:metrics :solo_practice_minutes_weekly])))
       (is (= 318 (get-in body [:metrics :practice_minutes_ytd])))
       (is (= 2400 (get-in body [:metrics :practice_minutes_lifetime])))
       (is (= 12 (get-in body [:metrics :songs_performed_live_ytd])))
@@ -1244,6 +1247,7 @@
       (is (= 49 (get-in body [:metrics :direct_fan_outreach_total])))
       (is (= 3 (get-in body [:metrics :direct_fan_outreach_ytd])))
       (is (= 200 (get-in body [:goals :gigs_lifetime])))
+      (is (= 240 (get-in body [:goals :solo_practice_minutes_weekly])))
       (is (= 2000 (get-in body [:goals :practice_hours_lifetime])))
       (is (= 120 (get-in body [:goals :originals_live_lifetime])))
       (is (= 3000 (get-in body [:goals :direct_outreach_lifetime])))
@@ -1260,6 +1264,7 @@
                                                                       :direct_fan_outreach_ytd 0})
                 home-x-goals/fetch-home-x-goals-from (fn [_]
                                                        {:gigs_lifetime 200
+                                                        :solo_practice_minutes_weekly 240
                                                         :practice_hours_lifetime 2000
                                                         :originals_live_lifetime 120
                                                         :direct_outreach_lifetime 3000})]
@@ -1270,6 +1275,7 @@
   (with-redefs [korma/exec-raw (fn [& _] [])
                 home-x-goals/fetch-home-x-goals-from (fn [_]
                                                        {:gigs_lifetime 200
+                                                        :solo_practice_minutes_weekly 240
                                                         :practice_hours_lifetime 2000
                                                         :originals_live_lifetime 120
                                                         :direct_outreach_lifetime 3000})]

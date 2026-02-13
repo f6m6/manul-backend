@@ -3,6 +3,7 @@
 
 (def default-goals
   {:gigs_lifetime 200
+   :solo_practice_minutes_weekly 240
    :practice_hours_lifetime 2000
    :originals_live_lifetime 120
    :direct_outreach_lifetime 3000})

@@ -96,7 +96,11 @@
 (defentity view_song_practice_counts)
 
 (def gig-types #{"open_mic" "booked" "busking" "showcase" "private_party"})
-(def home-x-goal-keys #{"gigs_lifetime" "practice_hours_lifetime" "originals_live_lifetime" "direct_outreach_lifetime"})
+(def home-x-goal-keys #{"gigs_lifetime"
+                        "solo_practice_minutes_weekly"
+                        "practice_hours_lifetime"
+                        "originals_live_lifetime"
+                        "direct_outreach_lifetime"})
 
 (defn normalize-gig-type
   [gig-type]
@@ -647,12 +651,19 @@
                      (exec-raw
                       ["with year_start as (
                           select date_trunc('year', current_date)::date as d
+                        ),
+                        week_start as (
+                          select date_trunc('week', current_date)::date as d
                         )
                         select
                           (select count(*)
                            from performances p
                            where p.performancedate >= (select d from year_start))::int as gigs_ytd,
                           (select count(*) from performances)::int as gigs_lifetime,
+                          coalesce((select sum(coalesce(vrs.effective_minutes, 0))
+                                    from view_recent_sessions vrs
+                                    where vrs.session_date >= (select d from week_start)
+                                      and vrs.session_type = 'solo_practice'), 0)::int as solo_practice_minutes_weekly,
                           coalesce((select sum(coalesce(vrs.effective_minutes, 0))
                                     from view_recent_sessions vrs
                                     where vrs.session_date >= (select d from year_start)
@@ -691,6 +702,7 @@
                   home-x-goals/default-goals))]
     {:metrics {:gigs_ytd (:gigs_ytd metrics-row)
                :gigs_lifetime (:gigs_lifetime metrics-row)
+               :solo_practice_minutes_weekly (:solo_practice_minutes_weekly metrics-row)
                :practice_minutes_ytd (:practice_minutes_ytd metrics-row)
                :practice_minutes_lifetime (:practice_minutes_lifetime metrics-row)
                :songs_performed_live_ytd (:songs_performed_live_ytd metrics-row)
