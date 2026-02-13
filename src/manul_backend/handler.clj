@@ -616,7 +616,7 @@
 (defn next-songs-to-perform-live
   "Return a JSON array with songs, live performance count and time since last performance"
   []
-  (->> (select view_next_songs_to_perform_live)
+  (->> (song-plays/fetch-next-live-songs-by-frecency song-plays/db-store 500)
        (map (fn [row] (clojure.core/update row :last_played str)))
        vec
        json-response))
@@ -624,10 +624,26 @@
 (defn next-songs-to-practise
   "Return a JSON array with songs, play count and time since last play in any context"
   []
-  (->> (song-plays/fetch-next-songs-to-play-anywhere song-plays/db-store)
+  (->> (song-plays/fetch-next-practice-songs-by-frecency song-plays/db-store 500)
        (map (fn [row] (clojure.core/update row :last_played_anywhere str)))
        vec
        json-response))
+
+(defn home-next-actions
+  "Return thin home-page recommendations with backend-owned ranking logic.
+  Ranking rules:
+  - active songs only
+  - Mirror You songs always first
+  - then overdue frecency (older + less frequent first)"
+  []
+  (let [live (->> (song-plays/fetch-next-live-songs-by-frecency song-plays/db-store 3)
+                  (map (fn [row] (clojure.core/update row :last_played str)))
+                  vec)
+        solo-practice (->> (song-plays/fetch-next-practice-songs-by-frecency song-plays/db-store 3)
+                           (map (fn [row] (clojure.core/update row :last_played_anywhere str)))
+                           vec)]
+    (json-response {:next_live live
+                    :next_solo_practice solo-practice})))
 
 (defn recent-sessions
   "Return a JSON array with the 5 most recent sessions by session date."
@@ -1103,15 +1119,32 @@
           (json-response {:title (:title row)}))))))
 
 (defn last-gig-date
-  "Return a JSON { lastGigDate } with date of last gig"
+  "Return a JSON with date, venue, and setlist of the most recent gig."
   []
-  (->> (select performances)
-       (map :performancedate)
-       sort
-       last
-       str
-       (assoc {} :lastGigDate)
-       json-response))
+  (let [rows (exec-raw
+              ["with latest as (
+                  select p.id, p.performancedate, p.venue
+                  from performances p
+                  order by p.performancedate desc, p.created_at desc, p.id desc
+                  limit 1
+                )
+                select l.performancedate, l.venue, sp.song_id, sp.setlistposition
+                from latest l
+                left join song_performances sp on sp.performance_id = l.id
+                order by sp.setlistposition asc nulls last"]
+              :results)
+        base (first rows)
+        payload (if base
+                  {:lastGigDate (str (:performancedate base))
+                   :lastGigVenue (:venue base)
+                   :lastGigSetlist (->> rows
+                                        (map :song_id)
+                                        (remove nil?)
+                                        vec)}
+                  {:lastGigDate ""
+                   :lastGigVenue nil
+                   :lastGigSetlist []})]
+    (json-response payload)))
 
 (defn live-gigs-by-year
   "Return yearly gig counts and estimated live minutes"
@@ -1186,6 +1219,7 @@
   (GET "/next-songs-to-play" [] (next-songs-to-perform-live))
   (GET "/next-songs-to-perform-live" [] (next-songs-to-perform-live))
   (GET "/next-songs-to-practise" [] (next-songs-to-practise))
+  (GET "/home-next-actions" [] (home-next-actions))
   (GET "/home-x/local" [] (home-x-local))
   (GET "/home-x/outreach" [] (home-x-outreach))
   (GET "/home-x" [] (home-x))

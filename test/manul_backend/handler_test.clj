@@ -15,6 +15,23 @@
     (is (= 400 (:status response)))
     (is (re-find #"venue and songs are required" (:body response)))))
 
+(deftest last-gig-date-returns-details
+  (with-redefs [korma/exec-raw (fn [& _]
+                                 [{:performancedate (java.sql.Date/valueOf "2026-02-01")
+                                   :venue "The Dignity"
+                                   :song_id "Song A"
+                                   :setlistposition 1}
+                                  {:performancedate (java.sql.Date/valueOf "2026-02-01")
+                                   :venue "The Dignity"
+                                   :song_id "Song B"
+                                   :setlistposition 2}])]
+    (let [response (last-gig-date)
+          body (json/read-str (:body response) :key-fn keyword)]
+      (is (= 200 (:status response)))
+      (is (= "2026-02-01" (:lastGigDate body)))
+      (is (= "The Dignity" (:lastGigVenue body)))
+      (is (= ["Song A" "Song B"] (:lastGigSetlist body))))))
+
 (deftest create-performance-uses-id-from-insert
   (let [song-perf-insert (atom nil)
         performance-insert (atom nil)]
@@ -809,19 +826,45 @@
       (is (= 400 (:status response)))
       (is (re-find #"songs are required" (:body response))))))
 
-(deftest next-songs-to-practise-uses-play-anywhere-store
+(deftest next-songs-to-practise-uses-frecency-store
   (let [captured (atom nil)
         played-date (java.sql.Date/valueOf "2026-02-01")]
-    (with-redefs [song-plays/fetch-next-songs-to-play-anywhere (fn [store]
-                                                                 (reset! captured store)
-                                                                 [{:song_id "Song A"
-                                                                   :last_played_anywhere played-date}])]
+    (with-redefs [song-plays/fetch-next-practice-songs-by-frecency (fn [store limit]
+                                                                      (reset! captured {:store store :limit limit})
+                                                                      [{:song_id "Song A"
+                                                                        :last_played_anywhere played-date}])]
       (let [response (next-songs-to-practise)
             body (json/read-str (:body response) :key-fn keyword)]
         (is (= 200 (:status response)))
-        (is @captured)
+        (is (:store @captured))
+        (is (= 500 (:limit @captured)))
         (is (= "Song A" (:song_id (first body))))
         (is (= "2026-02-01" (:last_played_anywhere (first body))))))))
+
+(deftest home-next-actions-returns-two-ranked-lists
+  (let [live-date (java.sql.Date/valueOf "2026-02-05")
+        practice-date (java.sql.Date/valueOf "2026-02-04")]
+    (with-redefs [song-plays/fetch-next-live-songs-by-frecency
+                  (fn [_ limit]
+                    (is (= 3 limit))
+                    [{:song_id "Live Song 1" :last_played live-date}
+                     {:song_id "Live Song 2" :last_played nil}
+                     {:song_id "Live Song 3" :last_played nil}])
+                  song-plays/fetch-next-practice-songs-by-frecency
+                  (fn [_ limit]
+                    (is (= 3 limit))
+                    [{:song_id "Practice Song 1" :last_played_anywhere practice-date}
+                     {:song_id "Practice Song 2" :last_played_anywhere nil}
+                     {:song_id "Practice Song 3" :last_played_anywhere nil}])]
+      (let [response (home-next-actions)
+            body (json/read-str (:body response) :key-fn keyword)]
+        (is (= 200 (:status response)))
+        (is (= 3 (count (:next_live body))))
+        (is (= 3 (count (:next_solo_practice body))))
+        (is (= "Live Song 1" (get-in body [:next_live 0 :song_id])))
+        (is (= "2026-02-05" (get-in body [:next_live 0 :last_played])))
+        (is (= "Practice Song 1" (get-in body [:next_solo_practice 0 :song_id])))
+        (is (= "2026-02-04" (get-in body [:next_solo_practice 0 :last_played_anywhere])))))))
 
 (deftest recent-sessions-uses-store
   (let [captured (atom nil)
@@ -1280,6 +1323,12 @@
                                                         :originals_live_lifetime 120
                                                         :direct_outreach_lifetime 3000})]
     (let [response (app (mock/request :get "/home-x/local"))]
+      (is (= 200 (:status response))))))
+
+(deftest home-next-actions-route-available
+  (with-redefs [song-plays/fetch-next-live-songs-by-frecency (fn [& _] [])
+                song-plays/fetch-next-practice-songs-by-frecency (fn [& _] [])]
+    (let [response (app (mock/request :get "/home-next-actions"))]
       (is (= 200 (:status response))))))
 
 (deftest home-x-outreach-route-available

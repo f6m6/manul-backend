@@ -36,3 +36,33 @@
       (let [rows (song-plays/fetch-next-songs-to-play-anywhere song-plays/db-store)]
         (is (re-find #"view_next_songs_to_play_anywhere" @captured))
         (is (= "Song A" (:song_id (first rows))))))))
+
+(deftest fetch-next-live-songs-by-frecency-uses-active-mirror-priority
+  (let [captured (atom nil)]
+    (with-redefs [korma/exec-raw (fn [& args]
+                                   (let [[sql params] (if (vector? (first args))
+                                                         (first args)
+                                                         (second args))]
+                                     (reset! captured {:sql sql :params params})
+                                     [{:song_id "Song A"}]))]
+      (let [rows (song-plays/fetch-next-live-songs-by-frecency song-plays/db-store 3)]
+        (is (re-find #"from song_performances" (:sql @captured)))
+        (is (re-find #"where s.active = true" (:sql @captured)))
+        (is (re-find #"a.title = 'Mirror You'" (:sql @captured)))
+        (is (re-find #"order by mirror_you desc, overdue_frecency desc" (:sql @captured)))
+        (is (= [3] (:params @captured)))
+        (is (= "Song A" (:song_id (first rows))))))))
+
+(deftest fetch-next-practice-songs-by-frecency-uses-play-events-view
+  (let [captured (atom nil)]
+    (with-redefs [korma/exec-raw (fn [& args]
+                                   (let [[sql params] (if (vector? (first args))
+                                                         (first args)
+                                                         (second args))]
+                                     (reset! captured {:sql sql :params params})
+                                     [{:song_id "Song B"}]))]
+      (let [rows (song-plays/fetch-next-practice-songs-by-frecency song-plays/db-store 3)]
+        (is (re-find #"from view_song_play_events" (:sql @captured)))
+        (is (re-find #"last_played_anywhere" (:sql @captured)))
+        (is (= [3] (:params @captured)))
+        (is (= "Song B" (:song_id (first rows))))))))
