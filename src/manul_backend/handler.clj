@@ -99,7 +99,7 @@
 (defentity view_song_last_practiced)
 (defentity view_song_practice_counts)
 
-(def gig-types #{"open_mic" "booked" "busking" "showcase" "private_party"})
+(def gig-types #{"open_mic" "booked" "busking" "showcase" "private_party" "informal_performance"})
 (def home-x-goal-keys #{"gigs_lifetime"
                         "solo_practice_minutes_weekly"
                         "practice_hours_lifetime"
@@ -393,6 +393,7 @@
     "booked" {:free false :openmic false}
     "showcase" {:free false :openmic false}
     "private_party" {:free false :openmic false}
+    "informal_performance" {:free false :openmic false}
     {:free true :openmic true}))
 
 (defn all-songs
