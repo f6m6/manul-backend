@@ -16,7 +16,7 @@
             [lein-cloverage "1.2.4"]]
   :ring {:handler manul-backend.handler/app
          :host "0.0.0.0"
-         :port 3000
+         :port ~(Integer/parseInt (or (System/getenv "PORT") "3000"))
          :auto-reload? true
          :auto-refresh? true
          :reload-paths ["src"]}
