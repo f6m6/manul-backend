@@ -86,6 +86,29 @@
         (is (= 0 (nth (:params @performance-insert) 4)))
         (is (= "showcase" (nth (:params @performance-insert) 5)))))))
 
+(deftest create-performance-allows-informal-performance-type
+  (let [performance-insert (atom nil)]
+    (with-redefs [with-transaction (fn [f] (f))
+                  korma/exec-raw (fn [& args]
+                                   (let [[sql params with-results?] (if (vector? (first args))
+                                                                      [(first args) (second (first args)) (second args)]
+                                                                      [(second args) (second (second args)) (nth args 2 nil)])]
+                                     (cond
+                                       (re-find #"insert into performances" (first sql)) (do
+                                                                                           (reset! performance-insert {:sql sql :params params})
+                                                                                           [{:id 87}])
+                                       (re-find #"insert into song_performances" (first sql)) :ok
+                                       :else :ok)))]
+      (let [body (json/write-str {:venue "Living Room"
+                                  :songs ["Song A"]
+                                  :gig_type "informal_performance"})
+            response (create-performance (-> (mock/request :post "/create-performance" body)
+                                             (mock/content-type "application/json")))
+            response-body (json/read-str (:body response) :key-fn keyword)]
+        (is (= 200 (:status response)))
+        (is (= 87 (:performanceId response-body)))
+        (is (= "informal_performance" (nth (:params @performance-insert) 5)))))))
+
 (deftest create-performance-defaults-gig-type-when-blank
   (let [performance-insert (atom nil)]
     (with-redefs [with-transaction (fn [f] (f))
