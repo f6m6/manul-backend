@@ -1744,6 +1744,8 @@
    :access-control-allow-origin [#"http://localhost:3449"
                                  #"http://localhost:3000"
                                  #"http://localhost:3001"
+                                 #"http://localhost:3100"
+                                 #"http://localhost:3101"
                                  #"http://192.168.178.20:3001"
                                  #"http://192.168.0.6:3000"
                                  #"http://pallas.herokuapp.com"
