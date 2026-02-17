@@ -8,10 +8,10 @@
   RecentSessionsStore
   (fetch-recent-sessions [_ limit]
     (korma/exec-raw
-     ["select session_type, session_id, session_date, session_created_at,
+     ["select session_type, session_id, session_date, session_occurred_at, session_created_at,
               session_label, song_count, minimum_minutes, actual_minutes, effective_minutes
        from view_recent_sessions
-       order by session_date desc, session_created_at desc, session_id desc
+       order by session_date desc, session_occurred_at desc, session_created_at desc, session_id desc
        limit ?"
       [limit]]
      :results)))

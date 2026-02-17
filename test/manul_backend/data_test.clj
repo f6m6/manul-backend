@@ -23,7 +23,7 @@
       (let [rows (recent-sessions/fetch-recent-sessions-from recent-sessions/db-store 5)]
         (is (= 5 (first (:params @captured))))
         (is (re-find #"from view_recent_sessions" (:sql @captured)))
-        (is (re-find #"order by session_date desc, session_created_at desc" (:sql @captured)))
+        (is (re-find #"order by session_date desc, session_occurred_at desc, session_created_at desc" (:sql @captured)))
         (is (= 1 (:session_id (first rows))))))))
 
 (deftest fetch-next-songs-to-play-anywhere-uses-view

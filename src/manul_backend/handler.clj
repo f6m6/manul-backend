@@ -202,6 +202,38 @@
                         :else ::invalid))
     :else ::invalid))
 
+(defn sentinel-hour-for-session-type
+  [session-type]
+  (case session-type
+    "performance" 20
+    "solo_practice" 10
+    "singing_lesson" 15
+    12))
+
+(defn sentinel-occurred-at
+  [session-type date-str]
+  (let [d (java.time.LocalDate/parse (str date-str))
+        dt (.atTime d (sentinel-hour-for-session-type session-type) 0 0)]
+    (java.sql.Timestamp/valueOf dt)))
+
+(defn parse-occurred-at-field
+  [value]
+  (cond
+    (nil? value) nil
+    (instance? java.sql.Timestamp value) value
+    (instance? java.util.Date value) (java.sql.Timestamp. (.getTime ^java.util.Date value))
+    (string? value)
+    (let [trimmed (s/trim value)]
+      (if (s/blank? trimmed)
+        nil
+        (try
+          (java.sql.Timestamp/from (java.time.Instant/parse trimmed))
+          (catch Exception _
+            (try
+              (java.sql.Timestamp/valueOf (java.time.LocalDateTime/parse trimmed))
+              (catch Exception _ ::invalid))))))
+    :else ::invalid))
+
 (defn trim-or-nil
   [value]
   (when (some? value)
@@ -410,13 +442,13 @@
   "List performances with nested setlists"
   []
   (let [rows (exec-raw
-              ["select p.id, p.performancedate, p.created_at, p.venue, p.free, p.openmic, p.gig_type,
+              ["select p.id, p.performancedate, p.occurred_at, p.created_at, p.venue, p.free, p.openmic, p.gig_type,
                        p.fee_micro_gbp,
                        sp.setlistposition, sp.song_id, s.length
                 from performances p
                 left join song_performances sp on sp.performance_id = p.id
                 left join songs s on s.title = sp.song_id
-                order by p.created_at desc, p.id desc, sp.setlistposition asc"]
+                order by p.performancedate desc, p.occurred_at desc, p.created_at desc, p.id desc, sp.setlistposition asc"]
               :results)
         grouped (->> rows
                      (group-by :id)
@@ -431,6 +463,7 @@
                                   estimated-time (estimated-minutes items)]
                               {:id id
                                :performancedate (str (:performancedate base))
+                               :occurred_at (when-let [occurred (:occurred_at base)] (str occurred))
                                :created_at (when-let [created (:created_at base)] (str created))
                                :venue (:venue base)
                                :free (:free base)
@@ -440,7 +473,7 @@
                                :estimated_time_minutes estimated-time
                                :setlist setlist})))
                      (sort-by (fn [row]
-                                (or (:created_at row) (:performancedate row)))
+                                (or (:occurred_at row) (:created_at row) (:performancedate row)))
                               #(compare %2 %1))
                      vec)]
     (json-response grouped)))
@@ -453,14 +486,14 @@
       (-> (json-response {:error "venuename is required"})
           (resp/status 400))
       (let [rows (exec-raw
-                  ["select p.id, p.performancedate, p.created_at, p.venue, p.free, p.openmic, p.gig_type,
+                  ["select p.id, p.performancedate, p.occurred_at, p.created_at, p.venue, p.free, p.openmic, p.gig_type,
                            p.fee_micro_gbp,
                            sp.setlistposition, sp.song_id, s.length
                     from performances p
                     left join song_performances sp on sp.performance_id = p.id
                     left join songs s on s.title = sp.song_id
                     where p.venue = ?
-                    order by p.created_at desc, p.id desc, sp.setlistposition asc"
+                    order by p.performancedate desc, p.occurred_at desc, p.created_at desc, p.id desc, sp.setlistposition asc"
                    [venue-name]]
                   :results)
             grouped (->> rows
@@ -476,6 +509,7 @@
                                       estimated-time (estimated-minutes items)]
                                   {:id id
                                    :performancedate (str (:performancedate base))
+                                   :occurred_at (when-let [occurred (:occurred_at base)] (str occurred))
                                    :created_at (when-let [created (:created_at base)] (str created))
                                    :venue (:venue base)
                                    :free (:free base)
@@ -485,7 +519,7 @@
                                    :estimated_time_minutes estimated-time
                                    :setlist setlist})))
                          (sort-by (fn [row]
-                                    (or (:created_at row) (:performancedate row)))
+                                    (or (:occurred_at row) (:created_at row) (:performancedate row)))
                                   #(compare %2 %1))
                          vec)]
         (json-response grouped)))))
@@ -494,7 +528,7 @@
   "List practice sessions with nested songs"
   []
   (let [rows (exec-raw
-              ["select ps.id, ps.practiced_on, ps.created_at, ps.total_minutes,\n                      pss.position, pss.song_id, pss.song_title, pss.minutes, s.length,\n                      psd.instrument_id,\n                      i.name as instrument_name,\n                      pvm.code as vocal_mode_code,\n                      psd.capo_position,\n                      psd.used_metronome,\n                      psd.notes,\n                      coalesce((\n                        select json_agg(pst.bpm order by pst.ordinal)\n                        from practice_song_tempos pst\n                        where pst.practice_session_id = pss.practice_session_id\n                          and pst.song_title = pss.song_title\n                      ), '[]'::json) as metronome_bpms_json,\n                      coalesce((\n                        select json_agg(psk.key_name order by psk.ordinal)\n                        from practice_song_keys psk\n                        where psk.practice_session_id = pss.practice_session_id\n                          and psk.song_title = pss.song_title\n                      ), '[]'::json) as key_changes_json\n               from practice_sessions ps\n               left join practice_session_songs pss on pss.practice_session_id = ps.id\n               left join songs s on s.title = pss.song_id\n               left join practice_song_details psd\n                 on psd.practice_session_id = pss.practice_session_id\n                and psd.song_title = pss.song_title\n               left join instruments i on i.id = psd.instrument_id\n               left join practice_vocal_modes pvm on pvm.id = psd.vocal_mode_id\n               order by ps.created_at desc, ps.id desc, pss.position asc"]
+              ["select ps.id, ps.practiced_on, ps.occurred_at, ps.created_at, ps.total_minutes,\n                      pss.position, pss.song_id, pss.song_title, pss.minutes, s.length,\n                      psd.instrument_id,\n                      i.name as instrument_name,\n                      pvm.code as vocal_mode_code,\n                      psd.capo_position,\n                      psd.used_metronome,\n                      psd.notes,\n                      coalesce((\n                        select json_agg(pst.bpm order by pst.ordinal)\n                        from practice_song_tempos pst\n                        where pst.practice_session_id = pss.practice_session_id\n                          and pst.song_title = pss.song_title\n                      ), '[]'::json) as metronome_bpms_json,\n                      coalesce((\n                        select json_agg(psk.key_name order by psk.ordinal)\n                        from practice_song_keys psk\n                        where psk.practice_session_id = pss.practice_session_id\n                          and psk.song_title = pss.song_title\n                      ), '[]'::json) as key_changes_json\n               from practice_sessions ps\n               left join practice_session_songs pss on pss.practice_session_id = ps.id\n               left join songs s on s.title = pss.song_id\n               left join practice_song_details psd\n                 on psd.practice_session_id = pss.practice_session_id\n                and psd.song_title = pss.song_title\n               left join instruments i on i.id = psd.instrument_id\n               left join practice_vocal_modes pvm on pvm.id = psd.vocal_mode_id\n               order by ps.practiced_on desc, ps.occurred_at desc, ps.created_at desc, ps.id desc, pss.position asc"]
               :results)
         grouped (->> rows
                      (group-by :id)
@@ -522,12 +556,13 @@
                                   estimated-time (estimated-minutes items)]
                               {:id id
                                :practiced_on (str (:practiced_on base))
+                               :occurred_at (when-let [occurred (:occurred_at base)] (str occurred))
                                :created_at (when-let [created (:created_at base)] (str created))
                                :total_minutes (:total_minutes base)
                                :estimated_time_minutes estimated-time
                                :songs songs})))
                      (sort-by (fn [row]
-                                (or (:created_at row) (:practiced_on row)))
+                                (or (:occurred_at row) (:created_at row) (:practiced_on row)))
                               #(compare %2 %1))
                      vec)]
     (json-response grouped)))
@@ -536,7 +571,7 @@
   "List singing lessons with nested songs"
   []
   (let [rows (exec-raw
-              ["select sl.id, sl.lesson_date, sl.created_at, sl.duration_minutes,\n               sls.position, sls.song_title\n               from singing_lessons sl\n               left join singing_lesson_songs sls on sls.singing_lesson_id = sl.id\n               order by sl.created_at desc, sl.id desc, sls.position asc"]
+              ["select sl.id, sl.lesson_date, sl.occurred_at, sl.created_at, sl.duration_minutes,\n               sls.position, sls.song_title\n               from singing_lessons sl\n               left join singing_lesson_songs sls on sls.singing_lesson_id = sl.id\n               order by sl.lesson_date desc, sl.occurred_at desc, sl.created_at desc, sl.id desc, sls.position asc"]
               :results)
         grouped (->> rows
                      (group-by :id)
@@ -550,11 +585,12 @@
                                              vec)]
                               {:id id
                                :lesson_date (str (:lesson_date base))
+                               :occurred_at (when-let [occurred (:occurred_at base)] (str occurred))
                                :created_at (when-let [created (:created_at base)] (str created))
                                :duration_minutes (:duration_minutes base)
                                :songs songs})))
                      (sort-by (fn [row]
-                                (or (:created_at row) (:lesson_date row)))
+                                (or (:occurred_at row) (:created_at row) (:lesson_date row)))
                               #(compare %2 %1))
                      vec)]
     (json-response grouped)))
@@ -562,8 +598,10 @@
 (defn create-singing-lesson
   "Create a singing lesson and its songs"
   [request]
-  (let [{:keys [date songs]} (json-read request)
+  (let [{:keys [date songs occurred_at]} (json-read request)
         lesson-date (if (and date (not (s/blank? date))) date (str (time/today)))
+        occurred-at-val (or (parse-occurred-at-field occurred_at)
+                            (sentinel-occurred-at "singing_lesson" lesson-date))
         songs-list (if (vector? songs) songs [])]
     (if (or (not (seq songs-list))
             (not (every? (fn [song] (and (string? song) (not (s/blank? song)))) songs-list)))
@@ -571,12 +609,15 @@
           (resp/status 400))
       (with-transaction
        (fn []
-         (let [rows (exec-raw
-                     ["insert into singing_lessons (lesson_date, duration_minutes) values (?, 120) returning id"
-                      [(java.sql.Date/valueOf lesson-date)]]
-                     :results)
+           (let [rows (exec-raw
+                       ["insert into singing_lessons (lesson_date, duration_minutes) values (?, 120) returning id"
+                        [(java.sql.Date/valueOf lesson-date)]]
+                       :results)
                lesson-id (normalize-id rows)]
-           (doseq [[idx song] (map-indexed vector songs-list)]
+             (exec-raw
+              ["update singing_lessons set occurred_at = ? where id = ?"
+               [occurred-at-val lesson-id]])
+             (doseq [[idx song] (map-indexed vector songs-list)]
              (exec-raw
               ["insert into singing_lesson_songs (singing_lesson_id, song_title, position) values (?, ?, ?)"
                [lesson-id song (inc idx)]]))
@@ -604,8 +645,12 @@
 (defn update-singing-lesson
   "Update a singing lesson and its songs"
   [id request]
-  (let [{:keys [date songs]} (json-read request)
+  (let [payload (json-read request)
+        {:keys [date songs occurred_at]} payload
         lesson-date (if (and date (not (s/blank? date))) date nil)
+        occurred-at-val (if (contains? payload :occurred_at)
+                          (parse-occurred-at-field occurred_at)
+                          nil)
         songs-list (if (vector? songs) songs [])]
     (if (or (s/blank? id) (nil? lesson-date))
       (-> (json-response {:error "date is required"})
@@ -625,6 +670,10 @@
                (-> (json-response {:error "singing lesson not found"})
                    (resp/status 404))
                (do
+                 (when occurred-at-val
+                   (exec-raw
+                    ["update singing_lessons set occurred_at = ? where id = ?"
+                     [occurred-at-val (Integer/parseInt id)]]))
                  (exec-raw
                   ["delete from singing_lesson_songs where singing_lesson_id = ?"
                    [(Integer/parseInt id)]])
@@ -967,6 +1016,8 @@
                 (-> row
                     (assoc :effective_minutes effective)
                     (clojure.core/update :session_date str)
+                    (clojure.core/update :session_occurred_at (fn [value]
+                                                                (when value (str value))))
                     (clojure.core/update :session_created_at (fn [value]
                                                                (when value (str value))))))))
        vec))
@@ -979,6 +1030,43 @@
 (defn home-metrics-local-data
   []
   (let [metrics-row (home-x-metrics/fetch-home-x-metrics-from home-x-metrics/db-store)
+        solo-practice-heatmap (->> (exec-raw
+                                    ["with days as (
+                                        select generate_series((current_date - interval '363 days')::date,
+                                                               current_date::date,
+                                                               interval '1 day')::date as day
+                                      )
+                                      select d.day,
+                                             coalesce(sum(vrs.effective_minutes), 0)::int as minutes
+                                      from days d
+                                      left join view_recent_sessions vrs
+                                        on vrs.session_date = d.day
+                                       and vrs.session_type = 'solo_practice'
+                                      group by d.day
+                                      order by d.day asc"]
+                                    :results)
+                                   (map (fn [row]
+                                          {:date (str (:day row))
+                                           :minutes (:minutes row)}))
+                                   vec)
+        all-activity-heatmap (->> (exec-raw
+                                   ["with days as (
+                                       select generate_series((current_date - interval '363 days')::date,
+                                                              current_date::date,
+                                                              interval '1 day')::date as day
+                                     )
+                                     select d.day,
+                                            coalesce(sum(vrs.effective_minutes), 0)::int as minutes
+                                     from days d
+                                     left join view_recent_sessions vrs
+                                       on vrs.session_date = d.day
+                                     group by d.day
+                                     order by d.day asc"]
+                                   :results)
+                                  (map (fn [row]
+                                         {:date (str (:day row))
+                                          :minutes (:minutes row)}))
+                                  vec)
         focus-songs (->> (exec-raw
                           ["select v.song_id
                             from view_next_songs_to_perform_live v
@@ -1002,7 +1090,9 @@
                :songs_performed_live_lifetime (:songs_performed_live_lifetime metrics-row)
                :sessions_ytd (:sessions_ytd metrics-row)}
      :goals goals
-     :focus_songs focus-songs}))
+     :focus_songs focus-songs
+     :solo_practice_minutes_heatmap solo-practice-heatmap
+     :all_activity_minutes_heatmap all-activity-heatmap}))
 
 (defn home-metrics-outreach-data
   []
@@ -1101,10 +1191,12 @@
 (defn create-performance
   "Create a performance and its song_performances rows"
   [request]
-  (let [{:keys [venue songs date gig_type fee_micro_gbp]} (json-read request)
+  (let [{:keys [venue songs date gig_type fee_micro_gbp occurred_at]} (json-read request)
         trimmed-venue (when venue (s/trim venue))
         songs-list (if (vector? songs) songs [])
         performance-date (if (and date (not (s/blank? date))) date (str (time/today)))
+        occurred-at-val (or (parse-occurred-at-field occurred_at)
+                            (sentinel-occurred-at "performance" performance-date))
         gig-type-in (normalize-gig-type gig_type)
         gig-type-val (cond
                        (and gig-type-in (gig-types gig-type-in)) gig-type-in
@@ -1134,6 +1226,9 @@
                         [(java.sql.Date/valueOf performance-date) trimmed-venue free-val openmic-val (or fee-micro 0) gig-type-val]]
                        :results)
                  performance-id (normalize-id rows)]
+             (exec-raw
+              ["update performances set occurred_at = ? where id = ?"
+               [occurred-at-val performance-id]])
              (doseq [[idx song] (map-indexed vector songs-list)]
                (exec-raw
                 ["insert into song_performances (song_id, performance_id, setlistposition) values (?, ?, ?)"
@@ -1144,8 +1239,10 @@
 (defn create-practice-session
   "Create a practice session and its practice_session_songs rows"
   [request]
-  (let [{:keys [date total_minutes songs]} (json-read request)
+  (let [{:keys [date total_minutes songs occurred_at]} (json-read request)
         session-date (if (and date (not (s/blank? date))) date (str (time/today)))
+        occurred-at-val (or (parse-occurred-at-field occurred_at)
+                            (sentinel-occurred-at "solo_practice" session-date))
         songs-list (if (vector? songs) songs [])
         normalized (map normalize-practice-song-entry songs-list)
         valid (filter (fn [row]
@@ -1162,6 +1259,9 @@
                         [(java.sql.Date/valueOf session-date) total_minutes]]
                        :results)
                  session-id (normalize-id rows)]
+             (exec-raw
+              ["update practice_sessions set occurred_at = ? where id = ?"
+               [occurred-at-val session-id]])
              (doseq [[idx song] (map-indexed vector valid)]
                (exec-raw
                 ["insert into practice_session_songs (practice_session_id, song_id, song_title, position, minutes) values (?, ?, ?, ?, ?)"
@@ -1194,8 +1294,12 @@
 (defn update-practice-session
   "Update a practice session and its songs"
   [id request]
-  (let [{:keys [date total_minutes songs]} (json-read request)
+  (let [payload (json-read request)
+        {:keys [date total_minutes songs occurred_at]} payload
         session-date (if (and date (not (s/blank? date))) date nil)
+        occurred-at-val (if (contains? payload :occurred_at)
+                          (parse-occurred-at-field occurred_at)
+                          nil)
         songs-list (if (vector? songs) songs [])
         normalized (map normalize-practice-song-entry songs-list)
         valid (filter (fn [row]
@@ -1219,6 +1323,10 @@
                  (-> (json-response {:error "practice session not found"})
                      (resp/status 404))
                  (do
+                   (when occurred-at-val
+                     (exec-raw
+                      ["update practice_sessions set occurred_at = ? where id = ?"
+                       [occurred-at-val (Integer/parseInt id)]]))
                    (exec-raw
                     ["delete from practice_session_songs where practice_session_id = ?"
                      [(Integer/parseInt id)]])
@@ -1237,9 +1345,13 @@
 (defn update-performance
   "Update performance fields"
   [id request]
-  (let [{:keys [venue date gig_type fee_micro_gbp]} (json-read request)
+  (let [payload (json-read request)
+        {:keys [venue date gig_type fee_micro_gbp occurred_at]} payload
         trimmed-venue (when venue (s/trim venue))
         performance-date (if (and date (not (s/blank? date))) date nil)
+        occurred-at-val (if (contains? payload :occurred_at)
+                          (parse-occurred-at-field occurred_at)
+                          nil)
         gig-type-in (normalize-gig-type gig_type)
         gig-type-val (cond
                        (and gig-type-in (gig-types gig-type-in)) gig-type-in
@@ -1268,13 +1380,18 @@
           (if (nil? row)
             (-> (json-response {:error "performance not found"})
                 (resp/status 404))
-            (json-response {:id (:id row)
-                            :performancedate (str (:performancedate row))
-                            :venue (:venue row)
-                            :free (:free row)
-                            :openmic (:openmic row)
-                            :fee_micro_gbp (:fee_micro_gbp row)
-                            :gig_type (name (:gig_type row))})))))))
+            (do
+              (when occurred-at-val
+                (exec-raw
+                 ["update performances set occurred_at = ? where id = ?"
+                  [occurred-at-val (Integer/parseInt id)]]))
+              (json-response {:id (:id row)
+                              :performancedate (str (:performancedate row))
+                              :venue (:venue row)
+                              :free (:free row)
+                              :openmic (:openmic row)
+                              :fee_micro_gbp (:fee_micro_gbp row)
+                              :gig_type (name (:gig_type row))}))))))))
 
 (defn replace-performance-setlist
   "Replace setlist for a performance"
