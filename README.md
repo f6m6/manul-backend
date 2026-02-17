@@ -73,3 +73,8 @@ Architecture decisions live in `docs/adr/`.
 ## Relationship to other repos
 - **manul-frontend** calls this API and expects legacy endpoints like `/next-songs-to-play`.
 - **pallas** is the current React UI.
+
+## Release Discipline
+- Never merge to `main` without explicit user approval in the current conversation.
+- Any backend schema change is not considered deployed until migrations are applied to `manul` (not only `manul_test`).
+- After applying migrations to `manul`, run endpoint smoke checks before marking work as deployed (at minimum `GET /practice-sessions` plus changed write-path checks).
