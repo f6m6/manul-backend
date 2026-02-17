@@ -457,6 +457,7 @@
                                    :vocal_mode_code "sing_and_play"
                                    :capo_position 2
                                    :used_metronome true
+                                   :practice_posture "standing"
                                    :metronome_bpms_json "[80,90]"
                                    :key_changes_json "[\"G\",\"A\"]"
                                    :notes "slow and steady"}
@@ -474,6 +475,7 @@
       (is (= 5 (get-in body [0 :songs 0 :instrument_id])))
       (is (= "Maton" (get-in body [0 :songs 0 :instrument])))
       (is (= "sing_and_play" (get-in body [0 :songs 0 :vocal_mode])))
+      (is (= "standing" (get-in body [0 :songs 0 :practice_posture])))
       (is (= [80 90] (get-in body [0 :songs 0 :metronome_bpms])))
       (is (= ["G" "A"] (get-in body [0 :songs 0 :key_changes]))))))
 
@@ -833,13 +835,16 @@
                                            :vocal_mode "sing_and_play"
                                            :capo_position 2
                                            :used_metronome true
+                                           :practice_posture "sitting"
                                            :metronome_bpms [80 90]
                                            :key_changes ["G" "A"]
                                            :notes "steady"}]})
             response (create-practice-session (-> (mock/request :post "/practice-sessions" body)
                                                   (mock/content-type "application/json")))]
         (is (= 200 (:status response)))
-        (is (some #(re-find #"insert into practice_song_details" (:sql %)) @calls))
+        (let [details-insert (some #(when (re-find #"insert into practice_song_details" (:sql %)) %) @calls)]
+          (is details-insert)
+          (is (= [7 "Song A" nil 2 2 true "sitting" "steady"] (:params details-insert))))
         (is (some #(re-find #"insert into practice_song_tempos" (:sql %)) @calls))
         (is (some #(re-find #"insert into practice_song_keys" (:sql %)) @calls))))))
 
@@ -875,6 +880,16 @@
                 korma/exec-raw (fn [& _] :ok)]
     (let [body (json/write-str {:date "2026-02-01"
                                 :songs [{:title "Song A" :capo_position "high"}]})
+          response (create-practice-session (-> (mock/request :post "/practice-sessions" body)
+                                                (mock/content-type "application/json")))]
+      (is (= 400 (:status response)))
+      (is (re-find #"songs are required" (:body response))))))
+
+(deftest create-practice-session-rejects-invalid-practice-posture
+  (with-redefs [with-transaction (fn [f] (f))
+                korma/exec-raw (fn [& _] :ok)]
+    (let [body (json/write-str {:date "2026-02-01"
+                                :songs [{:title "Song A" :practice_posture "leaning"}]})
           response (create-practice-session (-> (mock/request :post "/practice-sessions" body)
                                                 (mock/content-type "application/json")))]
       (is (= 400 (:status response)))

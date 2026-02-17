@@ -266,6 +266,9 @@
 (def valid-practice-vocal-modes
   #{"instrumental_only" "sing_and_play" "sing_over_instrumental"})
 
+(def valid-practice-postures
+  #{"sitting" "standing"})
+
 (defn parse-capo-position
   [value]
   (if (nil? value)
@@ -283,11 +286,12 @@
                                     :minutes (:minutes entry)
                                     :instrument_id (:instrument_id entry)
                                     :vocal_mode (or (:vocal_mode entry) (:vocal_mode_code entry))
-                                    :capo_position (or (:capo_position entry) (:capo entry))
-                                    :used_metronome (:used_metronome entry)
-                                    :metronome_bpms (:metronome_bpms entry)
-                                    :key_changes (:key_changes entry)
-                                    :notes (:notes entry)}
+                                     :capo_position (or (:capo_position entry) (:capo entry))
+                                     :used_metronome (:used_metronome entry)
+                                     :practice_posture (or (:practice_posture entry) (:posture entry))
+                                     :metronome_bpms (:metronome_bpms entry)
+                                     :key_changes (:key_changes entry)
+                                     :notes (:notes entry)}
                      :else nil)]
     (when normalized
       (let [title (trim-or-nil (:title normalized))
@@ -295,6 +299,7 @@
             vocal-mode (trim-or-nil (:vocal_mode normalized))
             capo-position (parse-capo-position (:capo_position normalized))
             used-metronome (parse-bool-field (:used_metronome normalized))
+            practice-posture (trim-or-nil (:practice_posture normalized))
             metronome-bpms (parse-int-list-field (:metronome_bpms normalized))
             key-changes (parse-string-list-field (:key_changes normalized))
             notes (trim-or-nil (:notes normalized))]
@@ -304,7 +309,8 @@
                 (= used-metronome ::invalid)
                 (= metronome-bpms ::invalid)
                 (= key-changes ::invalid)
-                (and vocal-mode (not (valid-practice-vocal-modes vocal-mode))))
+                (and vocal-mode (not (valid-practice-vocal-modes vocal-mode)))
+                (and practice-posture (not (valid-practice-postures practice-posture))))
           ::invalid
           {:title title
            :minutes (:minutes normalized)
@@ -312,6 +318,7 @@
            :vocal_mode vocal-mode
            :capo_position capo-position
            :used_metronome used-metronome
+           :practice_posture practice-posture
            :metronome_bpms metronome-bpms
            :key_changes key-changes
            :notes notes})))))
@@ -322,6 +329,7 @@
       (:vocal_mode song)
       (some? (:capo_position song))
       (some? (:used_metronome song))
+      (:practice_posture song)
       (seq (:metronome_bpms song))
       (seq (:key_changes song))
       (:notes song)))
@@ -356,14 +364,15 @@
         (throw (ex-info "vocal mode is invalid" {})))
       (exec-raw
        ["insert into practice_song_details
-         (practice_session_id, song_title, instrument_id, vocal_mode_id, capo_position, used_metronome, notes)
-         values (?, ?, ?, ?, ?, ?, ?)"
+         (practice_session_id, song_title, instrument_id, vocal_mode_id, capo_position, used_metronome, practice_posture, notes)
+         values (?, ?, ?, ?, ?, ?, ?, ?)"
         [session-id
          (:title song)
          instrument-id
          vocal-mode-id
          (:capo_position song)
          (:used_metronome song)
+         (:practice_posture song)
          (:notes song)]])
       (doseq [[idx bpm] (map-indexed vector (:metronome_bpms song))]
         (exec-raw
@@ -528,7 +537,7 @@
   "List practice sessions with nested songs"
   []
   (let [rows (exec-raw
-              ["select ps.id, ps.practiced_on, ps.occurred_at, ps.created_at, ps.total_minutes,\n                      pss.position, pss.song_id, pss.song_title, pss.minutes, s.length,\n                      psd.instrument_id,\n                      i.name as instrument_name,\n                      pvm.code as vocal_mode_code,\n                      psd.capo_position,\n                      psd.used_metronome,\n                      psd.notes,\n                      coalesce((\n                        select json_agg(pst.bpm order by pst.ordinal)\n                        from practice_song_tempos pst\n                        where pst.practice_session_id = pss.practice_session_id\n                          and pst.song_title = pss.song_title\n                      ), '[]'::json) as metronome_bpms_json,\n                      coalesce((\n                        select json_agg(psk.key_name order by psk.ordinal)\n                        from practice_song_keys psk\n                        where psk.practice_session_id = pss.practice_session_id\n                          and psk.song_title = pss.song_title\n                      ), '[]'::json) as key_changes_json\n               from practice_sessions ps\n               left join practice_session_songs pss on pss.practice_session_id = ps.id\n               left join songs s on s.title = pss.song_id\n               left join practice_song_details psd\n                 on psd.practice_session_id = pss.practice_session_id\n                and psd.song_title = pss.song_title\n               left join instruments i on i.id = psd.instrument_id\n               left join practice_vocal_modes pvm on pvm.id = psd.vocal_mode_id\n               order by ps.practiced_on desc, ps.occurred_at desc, ps.created_at desc, ps.id desc, pss.position asc"]
+              ["select ps.id, ps.practiced_on, ps.occurred_at, ps.created_at, ps.total_minutes,\n                      pss.position, pss.song_id, pss.song_title, pss.minutes, s.length,\n                      psd.instrument_id,\n                      i.name as instrument_name,\n                      pvm.code as vocal_mode_code,\n                      psd.capo_position,\n                      psd.used_metronome,\n                      psd.practice_posture,\n                      psd.notes,\n                      coalesce((\n                        select json_agg(pst.bpm order by pst.ordinal)\n                        from practice_song_tempos pst\n                        where pst.practice_session_id = pss.practice_session_id\n                          and pst.song_title = pss.song_title\n                      ), '[]'::json) as metronome_bpms_json,\n                      coalesce((\n                        select json_agg(psk.key_name order by psk.ordinal)\n                        from practice_song_keys psk\n                        where psk.practice_session_id = pss.practice_session_id\n                          and psk.song_title = pss.song_title\n                      ), '[]'::json) as key_changes_json\n               from practice_sessions ps\n               left join practice_session_songs pss on pss.practice_session_id = ps.id\n               left join songs s on s.title = pss.song_id\n               left join practice_song_details psd\n                 on psd.practice_session_id = pss.practice_session_id\n                and psd.song_title = pss.song_title\n               left join instruments i on i.id = psd.instrument_id\n               left join practice_vocal_modes pvm on pvm.id = psd.vocal_mode_id\n               order by ps.practiced_on desc, ps.occurred_at desc, ps.created_at desc, ps.id desc, pss.position asc"]
               :results)
         grouped (->> rows
                      (group-by :id)
@@ -545,6 +554,7 @@
                                                      :vocal_mode (:vocal_mode_code row)
                                                      :capo_position (:capo_position row)
                                                      :used_metronome (:used_metronome row)
+                                                     :practice_posture (:practice_posture row)
                                                      :metronome_bpms (if-let [raw (:metronome_bpms_json row)]
                                                                        (json/read-str (str raw))
                                                                        [])
