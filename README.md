@@ -51,6 +51,30 @@ For safe testing first, apply to `manul_test`:
 psql -U postgres -d manul_test -f migrations/<file>.sql
 ```
 
+### Reset + Seed Test DB
+Rebuild `manul_test` with an identical schema to `manul`, then seed with synthetic data:
+```
+cd /Users/farhan/code/manul/prod/manul-backend
+./scripts/refresh_manul_test.sh
+```
+or:
+```
+npm run db:test:refresh
+```
+or:
+```
+make refresh-manul-test
+```
+
+Seed only (without dropping/recreating):
+```
+npm run db:test:seed
+```
+
+Safety guard:
+- `scripts/seed_manul_test.py` refuses any database other than `manul_test`.
+- `scripts/refresh_manul_test.sh` refuses any `TARGET_DB` other than `manul_test`.
+
 ### Run
 In Nushell:
 ```
