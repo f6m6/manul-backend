@@ -17,6 +17,26 @@ This backend expects a local Postgres database named `manul` with tables/views a
 
 There is also a `manul_test` database (a clone of `manul`) for safe migrations and endpoint verification.
 
+### Production Backups
+Take a one-off production backup (saved to `~/Documents/manul-db-backups`, which is on iCloud Drive):
+```
+cd /Users/farhan/code/manul/prod/manul-backend
+./scripts/backup_manul.sh
+```
+or:
+```
+npm run backup:now
+```
+
+Install a daily cron backup (example: 02:30 every day):
+```
+crontab -e
+```
+Add:
+```
+30 2 * * * /Users/farhan/code/manul/prod/manul-backend/scripts/backup_manul.sh >> /Users/farhan/Documents/manul-db-backups/backup.log 2>&1
+```
+
 ### Migrations
 All DB changes must be done via SQL migrations (no ad‑hoc DB edits).
 

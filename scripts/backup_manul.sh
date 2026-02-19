@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Backup production DB to iCloud-synced Documents folder.
+#
+# Optional env:
+#   PGUSER (default: postgres)
+#   PGHOST (default: localhost)
+#   PGPORT (default: 5432)
+#   PGPASSWORD (default: empty)
+#   SOURCE_DB (default: manul)
+#   BACKUP_DIR (default: "$HOME/Documents/manul-db-backups")
+
+PGUSER="${PGUSER:-postgres}"
+PGHOST="${PGHOST:-localhost}"
+PGPORT="${PGPORT:-5432}"
+PGPASSWORD="${PGPASSWORD:-}"
+SOURCE_DB="${SOURCE_DB:-manul}"
+BACKUP_DIR="${BACKUP_DIR:-$HOME/Documents/manul-db-backups}"
+
+export PGUSER PGHOST PGPORT PGPASSWORD
+
+mkdir -p "$BACKUP_DIR"
+
+timestamp="$(date +%Y%m%d-%H%M%S)"
+out_file="${BACKUP_DIR}/${SOURCE_DB}-${timestamp}.dump"
+latest_symlink="${BACKUP_DIR}/latest-${SOURCE_DB}.dump"
+
+pg_dump -d "$SOURCE_DB" --format=custom --no-owner --no-privileges --file "$out_file"
+ln -sfn "$out_file" "$latest_symlink"
+
+echo "Backup written: $out_file"

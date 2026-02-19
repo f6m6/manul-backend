@@ -1,0 +1,7 @@
+{
+  "name": "manul-backend-tools",
+  "private": true,
+  "scripts": {
+    "backup:now": "./scripts/backup_manul.sh"
+  }
+}
