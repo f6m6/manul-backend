@@ -872,8 +872,8 @@
                join songs s on s.title = asg.song_title
                left join view_song_last_performed_live vpl on vpl.song_id = s.title
                left join view_song_perform_live_counts vpc on vpc.song_id = s.title
-               left join view_song_last_practiced vpr on vpr.song_id = s.title
-               left join view_song_practice_counts vpp on vpp.song_id = s.title
+               left join view_song_last_practiced vpr on vpr.song_title = s.title
+               left join view_song_practice_counts vpp on vpp.song_title = s.title
                where a.id = ?
                order by asg.track_number asc"
                [(Integer/parseInt album-id)]]
