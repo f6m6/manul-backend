@@ -340,6 +340,24 @@
 (deftest album-tracks-non-numeric-id-throws
   (is (thrown? NumberFormatException (album-tracks "abc"))))
 
+(deftest album-tracks-joins-practice-views-on-song-id
+  ;; view_song_last_practiced and view_song_practice_counts expose song_id, not
+  ;; song_title (20260201_add_practice_song_ids.sql redefined them). Joining on
+  ;; song_title makes the endpoint 500 with "column vpr.song_title does not exist".
+  (let [calls (atom [])]
+    (with-redefs [korma/exec-raw (fn [& args]
+                                   (let [[sql params] (if (vector? (first args))
+                                                        (first args)
+                                                        (second args))]
+                                     (swap! calls conj {:sql sql :params params})
+                                     []))]
+      (album-tracks "1")
+      (let [sql (:sql (first @calls))]
+        (is (re-find #"view_song_last_practiced vpr on vpr\.song_id" sql))
+        (is (re-find #"view_song_practice_counts vpp on vpp\.song_id" sql))
+        (is (not (re-find #"vpr\.song_title" sql)))
+        (is (not (re-find #"vpp\.song_title" sql)))))))
+
 (deftest create-song-invalid-json-throws
   (is (thrown? Exception
                (create-song (-> (mock/request :post "/create-song" "{")
