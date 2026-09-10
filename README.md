@@ -28,14 +28,25 @@ or:
 npm run backup:now
 ```
 
-Install a daily cron backup (example: 02:30 every day):
+Install the daily backup (02:30 every day) as a launchd agent:
 ```
-crontab -e
+launchctl bootstrap gui/$UID ~/Library/LaunchAgents/com.farhan.manul.backup.plist
 ```
-Add:
+Run it on demand without waiting for the schedule:
 ```
-30 2 * * * /Users/farhan/code/manul/prod/manul-backend/scripts/backup_manul.sh >> /Users/farhan/Documents/manul-db-backups/backup.log 2>&1
+launchctl kickstart -w gui/$UID/com.farhan.manul.backup
 ```
+Check it ran (`last exit code = 0`):
+```
+launchctl print gui/$UID/com.farhan.manul.backup | grep -E 'last exit|runs ='
+```
+Its log is at `~/Library/Logs/manul-backup.log`.
+
+Use launchd rather than cron. cron does not fire while the Mac is asleep and
+never catches up on missed runs, so scheduled backups are silently skipped;
+launchd runs a missed `StartCalendarInterval` job on the next wake. The log
+must live outside `~/Documents` — launchd cannot open a redirect inside that
+TCC-protected folder and fails the whole job with `EX_CONFIG` if it tries.
 
 ### Migrations
 All DB changes must be done via SQL migrations (no ad‑hoc DB edits).

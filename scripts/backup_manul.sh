@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# cron and launchd start with a minimal PATH that omits Homebrew, so pg_dump
+# is invisible to them. Prepend the usual Homebrew locations before use.
+PATH="/opt/homebrew/bin:/usr/local/bin:${PATH}"
+export PATH
+
+if ! command -v pg_dump >/dev/null 2>&1; then
+  echo "backup_manul.sh: pg_dump not found on PATH ($PATH)" >&2
+  exit 1
+fi
+
 # Backup production DB to iCloud-synced Documents folder.
 #
 # Optional env:
