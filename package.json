@@ -1,0 +1,9 @@
+{
+  "name": "manul-backend-tools",
+  "private": true,
+  "scripts": {
+    "backup:now": "./scripts/backup_manul.sh",
+    "db:test:refresh": "./scripts/refresh_manul_test.sh",
+    "db:test:seed": "./.venv/bin/python scripts/seed_manul_test.py --db manul_test --user ${PGUSER:-postgres} --host ${PGHOST:-localhost} --port ${PGPORT:-5432} --password \"${PGPASSWORD:-}\""
+  }
+}
